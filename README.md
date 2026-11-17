@@ -1,6 +1,6 @@
 # OpenTracker
 
-//I am totally new to writing code or GitHub, i am only familiar with using terminal in Ubuntu but i wanted to have a go at Vibe coding...// **I expanded the midi cc slots from a-f to a-p, when gemini wants to talk to me again ill expand to a-s, as that would neatly fill out all the columns the extra tabs**
+I am totally new to writing code or GitHub, i am only familiar with using terminal in Ubuntu but i wanted to have a go at Vibe coding... **I expanded the midi cc slots from a-f to a-p, when gemini wants to talk to me again ill expand to a-s, as that would neatly fill out all the columns the extra tabs**
 
 OpenTracker is an open-source, clean-room firmware for the **original Polyend Tracker**,
 written from behavioural specifications. It contains no Polyend code, fonts, icons or
