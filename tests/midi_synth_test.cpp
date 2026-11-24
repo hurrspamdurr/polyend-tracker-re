@@ -472,3 +472,52 @@ TEST(instr_column_pad_auditions_at_note_60) {
         h.run(5);
     }
 }
+
+// A pad on a MIDI instrument sends the same note pattern playback sends for
+// the cell it writes. Middle C used to move only the sequencer, so the button
+// was an octave away from the recorded note.
+static int firstNoteOn(Harness& h) {
+    for (size_t i = 0; i + 2 < h.midi.sent.size(); ++i)
+        if ((h.midi.sent[i] & 0xF0) == 0x90 && h.midi.sent[i + 2]) return h.midi.sent[i + 1];
+    return -1;
+}
+static int firstNoteOff(Harness& h) {
+    for (size_t i = 0; i + 2 < h.midi.sent.size(); ++i)
+        if ((h.midi.sent[i] & 0xF0) == 0x80) return h.midi.sent[i + 1];
+    return -1;
+}
+
+TEST(pad_midi_follows_middle_c) {
+    Harness h;
+    App& a = *h.app;
+    a.cfg.midiOut = 3;
+    a.cfg.middleC = 3;   // C-6: playback sends the cell note one octave down
+    a.applySequencerSettings();
+    a.setCurrentInstrument(kFirstMidiInstrument);
+    PatternScreen& p = pe(h);
+    p.col = 0;
+    p.track = 8;
+    const int raw = a.padNote(0);
+    CHECK(raw != PadNotes::kNoNote);
+    const int mc = a.seq.settings().middleC;
+    const int want = raw + 12 * (2 - mc);
+    CHECK_EQ(want, raw - 12);
+    h.midi.sent.clear();
+    h.push(InputEvent::kPadDown, 0);
+    h.run(5);
+    CHECK_EQ(firstNoteOn(h), want);
+    h.midi.sent.clear();
+    h.push(InputEvent::kPadUp, 0);
+    h.run(5);
+    CHECK_EQ(firstNoteOff(h), want);
+    // The cell keeps the pad's note. Playback of that cell sends `want` too.
+    h.tap(btn::Rec);
+    CHECK(p.edit());
+    h.midi.sent.clear();
+    h.push(InputEvent::kPadDown, 0);
+    h.run(5);
+    CHECK_EQ(int(a.pattern().tracks[8].steps[0].note), raw);
+    CHECK_EQ(firstNoteOn(h), want);
+    h.push(InputEvent::kPadUp, 0);
+    h.run(5);
+}
