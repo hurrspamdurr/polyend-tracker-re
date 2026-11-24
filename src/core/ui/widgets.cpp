@@ -642,7 +642,8 @@ bool marqueeRunning() { return gMqRun; }
 void list(Gfx& g, const Theme& th, const ListView& v) {
     const int s = v.set;
     if (v.background) panel(g, th, v.x, v.y, v.w, v.h, th.slot(s + 3));
-    const int visible = listVisibleRows(v.h);
+    const int rowH = v.rowH > 0 ? v.rowH : kListRowH;
+    const int visible = listVisibleRows(v.h, rowH);
     const bool scroll = v.count > visible;
     const int innerW = v.w - (scroll ? 13 : 6);
     char buf[kListItemCap];
@@ -662,7 +663,7 @@ void list(Gfx& g, const Theme& th, const ListView& v) {
                 const int32_t c = v.colour(v.ctx, idx);
                 if (c >= 0) tc = uint32_t(c);
             }
-            const int ty = v.y + 17 + kListRowH * r;
+            const int ty = v.y + 4 + rowH * r + rowH / 2;
             // A tag takes the row's right end; the name column shrinks by it.
             const char* tag = v.tag ? v.tag(v.ctx, idx) : nullptr;
             int right = colRight, tagW = 0;
@@ -699,8 +700,8 @@ void list(Gfx& g, const Theme& th, const ListView& v) {
         else if (v.selStyle == ListSel::kRed) c = th.slot(slot::kFocusFrame);
         else if (v.selStyle == ListSel::kGreen) c = th.slot(slot::kGreen);
         if (!v.enabled) c = mix(th.slot(s + 3), c, kEdgeA);   // 7e7e7e on Monochrome [S round 3, 007]
-        const int rt = v.y + 4 + kListRowH * (v.sel - v.top);
-        stroke(g, v.x + 3, rt, v.x + 3 + innerW, rt + kListRowH, c);
+        const int rt = v.y + 4 + rowH * (v.sel - v.top);
+        stroke(g, v.x + 3, rt, v.x + 3 + innerW, rt + rowH, c);
     }
     if (scroll) {
         const int tx = v.x + v.w - 6, ty = v.y + 8, th14 = v.h - 14;

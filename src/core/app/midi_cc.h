@@ -80,7 +80,9 @@ int ccTimePosition(uint8_t value);
 // the sample length in frames. Returns true when a parameter changed.
 inline bool isPlaybackCc(uint8_t cc) { return cc >= 16 && cc <= 19; }
 bool applyPlaybackCc(Instrument& in, uint32_t len, uint8_t cc, uint8_t value);
-// CC A..F value label (spec 05 appendix C §7, 131 entries 0..130).
+// CC A..Z value label (spec 05 appendix C §7, 131 entries 0..130).
+// CC 20..119 are Novation DrumStation names (instrument in capitals, function
+// in small letters). The other numbers keep the general MIDI role.
 constexpr int kCcValueCount = 131;
 void ccValueName(int value, char* out, int cap);
 

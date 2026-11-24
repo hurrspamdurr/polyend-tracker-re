@@ -277,6 +277,7 @@ inline void panelFocus(Gfx& g, const Theme& th, int x, int w) { focusFrame(g, th
 enum class ListSel : uint8_t { kFromSet, kWhite, kRed, kGreen, kNone };
 struct ListView {
     int x = 1, y = kPanelY, w = 197, h = kPanelH;
+    int rowH = 0;              // 0 = kListRowH. A taller row shows fewer lines.
     int count = 0;
     int top = 0;               // first visible item (see listFollow)
     int sel = -1;              // selected item (-1 none)
@@ -303,7 +304,10 @@ struct ListView {
     void* ctx = nullptr;
 };
 // Rows that fit: (h - 4) / 27 (14 for a 394-px list).
-inline int listVisibleRows(int h) { return h > 4 ? (h - 4) / kListRowH : 0; }
+inline int listVisibleRows(int h, int rowH = kListRowH) {
+    if (rowH <= 0) rowH = kListRowH;
+    return h > 4 ? (h - 4) / rowH : 0;
+}
 // Keeps `sel` visible with one row of context at either edge; returns the
 // new first visible item.
 int listFollow(int sel, int count, int visible, int top);

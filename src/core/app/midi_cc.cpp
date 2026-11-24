@@ -214,6 +214,29 @@ bool applyPlaybackCc(Instrument& in, uint32_t len, uint8_t cc, uint8_t value) {
     return false;
 }
 
+// Novation DrumStation controller map (manual p.42). Index 0 is CC 20.
+// 808 is 20..75, 909 is 76..119. The instrument is capitals, the function
+// is small letters: BD bass, SD snare, LT/MT/HT toms, RS rim, CP clap,
+// CB cowbell, CH closed hat, OH open hat, CY crash, RD ride, LC/MC/HC
+// congas, MA maracas, CL claves; cut front cut, pan, dst distortion,
+// tun tune, ton tone, dcy decay, snp snappy, atk attack.
+// The printed page is two columns. Clap tune is 100, closed-hat
+// distortion/tune/decay are 101..103, open-hat tune is 104, open-hat
+// decay is 113.
+const char* const kDrumCc[100] = {
+    "BDcut", "BDpan", "BDdst", "BDtun", "BDton", "BDdcy", "SDcut", "SDpan", "SDdst", "SDtun",  // 20..29 808
+    "SDton", "SDsnp", "LTcut", "LTpan", "LTdst", "LTtun", "LTdcy", "MTcut", "MTpan", "MTdst",  // 30..39
+    "MTtun", "MTdcy", "HTcut", "HTpan", "HTdst", "HTtun", "HTdcy", "RSpan", "RStun", "CPpan",  // 40..49
+    "CPtun", "CBpan", "CBdst", "CBtun", "CHpan", "CHtun", "CHdcy", "OHpan", "OHtun", "OHdcy",  // 50..59
+    "CYpan", "CYton", "CYdcy", "LCpan", "LCdst", "LCtun", "MCpan", "MCdst", "MCtun", "HCpan",  // 60..69
+    "HCdst", "HCtun", "MApan", "MAtun", "CLpan", "CLtun",                                        // 70..75
+    "BDtun", "BDatk", "BDdcy", "SDtun",                                                            // 76..79 909
+    "SDton", "SDsnp", "LTcut", "LTpan", "LTdst", "LTtun", "LTdcy", "MTcut", "MTpan", "MTdst",  // 80..89
+    "MTtun", "MTdcy", "HTcut", "HTpan", "HTdst", "HTtun", "HTdcy", "RSpan", "RStun", "CPpan",  // 90..99
+    "CPtun", "CHdst", "CHtun", "CHdcy", "OHtun", "BDcut", "BDpan", "BDdst", "SDcut", "SDpan",  // 100..109
+    "SDdst", "CHpan", "OHpan", "OHdcy", "CYpan", "CYtun", "CYdcy", "RDpan", "RDtun", "RDdcy",  // 110..119
+};
+
 // spec 19 (table 0xa6750) / spec 05 appendix C §7: CC A..F value list,
 // 131 entries, no "off" entry. 0..127 = CC number, with a short role name for the standard
 // controllers; 128..130 = Program Change, Channel / Poly Aftertouch.
@@ -223,7 +246,11 @@ void ccValueName(int value, char* out, int cap) {
     if (v == 128) { std::snprintf(out, size_t(cap), "Prg Chg"); return; }
     if (v == 129) { std::snprintf(out, size_t(cap), "Chan AT"); return; }
     if (v == 130) { std::snprintf(out, size_t(cap), "Poly AT"); return; }
-    // spec 19 §3: the 38 role suffixes (other numbers are bare).
+    if (v >= 20 && v <= 119) {
+        std::snprintf(out, size_t(cap), "%d %s", v, kDrumCc[v - 20]);
+        return;
+    }
+    // General MIDI roles the DrumStation does not use (spec 19 §3).
     const char* role = nullptr;
     switch (v) {
         case 0: role = "Bank"; break;
@@ -236,30 +263,6 @@ void ccValueName(int value, char* out, int cap) {
         case 8: role = "Balnc"; break;
         case 10: role = "Pan"; break;
         case 11: role = "Exp"; break;
-        case 32: role = "Bank"; break;
-        case 33: role = "Modw"; break;
-        case 34: role = "Brth"; break;
-        case 36: role = "Foot"; break;
-        case 37: role = "Glid"; break;
-        case 38: role = "Data"; break;
-        case 39: role = "ChVo"; break;
-        case 40: role = "Blnc"; break;
-        case 42: role = "Pan"; break;
-        case 43: role = "Exp"; break;
-        case 64: role = "Sust"; break;
-        case 65: role = "Port"; break;
-        case 66: role = "Sste"; break;
-        case 67: role = "SftP"; break;
-        case 68: role = "Lgto"; break;
-        case 69: role = "Hld2"; break;
-        case 84: role = "Porta"; break;
-        case 88: role = "HDVel"; break;
-        case 96: role = "Dat+"; break;
-        case 97: role = "Dat-"; break;
-        case 98: role = "NRPNL"; break;
-        case 99: role = "NRPNM"; break;
-        case 100: role = "RPNL"; break;
-        case 101: role = "RPNM"; break;
         case 120: role = "SOff"; break;
         case 121: role = "Rst"; break;
         case 122: role = "Locl"; break;

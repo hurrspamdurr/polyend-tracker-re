@@ -110,7 +110,10 @@ void ccListColumn(Gfx& g, const Theme& th, int col, int sel) {
     v.background = false;
     v.count = midicc::kCcValueCount;
     v.sel = sel;
-    v.top = wg::listFollow(sel, v.count, wg::listVisibleRows(v.h), 0);
+    // Taller rows: eight columns of "108 SDdcy" at the normal 14-row pitch
+    // overflow the display list (the screen looks frozen). Eight rows fit.
+    v.rowH = 48;
+    v.top = wg::listFollow(sel, v.count, wg::listVisibleRows(v.h, v.rowH), 0);
     v.selStyle = wg::ListSel::kWhite;
     v.item = ccItem;
     wg::list(g, th, v);
