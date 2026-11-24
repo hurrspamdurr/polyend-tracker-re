@@ -356,11 +356,19 @@ int App::previewOn(uint16_t voiceId, uint8_t instrument, uint8_t note, uint8_t v
         // MIDI instrument Mn plays on channel n, like the sequencer (spec 03
         // §4.4); the record's channel byte is 0-based and not used for output
         // (reading it as 1-based shifted M02..M16 down one, USER_REPORTS_R3 R3-6).
+        // The note uses the same Middle C offset as pattern playback
+        // (Sequencer::midiNoteNumber). A pad used to send the raw note, so
+        // with Middle C away from C-5 the button was an octave off the note
+        // the pattern later sent for the same cell.
         const uint8_t ch = uint8_t((instrument - kFirstMidiInstrument) & 15);
-        const uint8_t msg[3] = {uint8_t(0x90 | ch), uint8_t(note & 127), uint8_t(vol ? vol : 1)};
+        const uint8_t mc = seq.settings().middleC > 3 ? 2 : seq.settings().middleC;
+        const int shifted = int(note & 127) + 12 * (2 - int(mc));
+        const uint8_t sent = uint8_t(shifted < 0 ? 0 : (shifted > 127 ? 127 : shifted));
+        const uint8_t msg[3] = {uint8_t(0x90 | ch), sent, uint8_t(vol ? vol : 1)};
         // Routed by Config "MIDI out" like the sequencer (spec 17 §1.4 step 7).
         if (sound) routeMidi(*hal_.midi, uint8_t(cfg.midiOut & 3), msg, 3);
         r.ch = ch;
+        r.note = sent;
     } else if (sound) {
         // Velocity-scaled volume as in step entry (spec 03 §5.1).
         VoiceNoteOn n;
@@ -378,7 +386,8 @@ int App::previewOn(uint16_t voiceId, uint8_t instrument, uint8_t note, uint8_t v
     r.midi = midi;
     r.id = voiceId;
     r.instrument = instrument;
-    r.note = uint8_t(note & 127);
+    // MIDI keeps the transposed note from above so the note-off matches it.
+    if (!midi) r.note = uint8_t(note & 127);
     return track;
 }
 
