@@ -94,7 +94,10 @@ CFLAGS    := $(COMMON) -std=gnu11
 CXXFLAGS  := $(COMMON) -std=gnu++17 -fno-exceptions -fno-rtti -felide-constructors -Wno-psabi
 # Own linker script: the Teensy one + the uncached `.dma` section (src/hal/opentracker.ld).
 LDSCRIPT  := src/hal/opentracker.ld
-LDFLAGS   := $(CPUFLAGS) -O2 -Wl,--gc-sections,--defsym=__rtc_localtime=0,--no-warn-rwx-segments -T$(LDSCRIPT) \
+# Binutils 2.39+ warns about the Teensy script's RWX segments. Arm GNU 10.3's ld
+# does not know --no-warn-rwx-segments and fails the link if it is passed.
+LD_RWX    := $(shell $(CROSS)ld --help 2>/dev/null | grep -q -- '--no-warn-rwx-segments' && echo ,--no-warn-rwx-segments)
+LDFLAGS   := $(CPUFLAGS) -O2 -Wl,--gc-sections,--defsym=__rtc_localtime=0$(LD_RWX) -T$(LDSCRIPT) \
              --specs=nano.specs -u _printf_float
 LIBS      := -lm -lstdc++
 
