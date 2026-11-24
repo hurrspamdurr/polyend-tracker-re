@@ -120,8 +120,10 @@ void InstrumentScreen::start(int opt) {
     const uint8_t ci = app_.currentInstrument();
     // Appendix C §1: MIDI instruments force mode 3; re-entry keeps only
     // modes 0/1 (MIDI Mapping is entered from the Effects page).
-    if (isMidiInstrument(ci)) mode = 3;
-    else if (opt == 2) mode = 1;
+    if (isMidiInstrument(ci)) {
+        mode = 3;
+        midiPage = 0;
+    } else if (opt == 2) mode = 1;
     else if (mode == 3 || mode == 2) mode = 0;
     effects = false;
     column = clampi(column, 0, columns() - 1);
@@ -146,8 +148,18 @@ bool InstrumentScreen::selectable(int c) const {
     return true;
 }
 
+namespace {
+// [I] CC slot for a column on the MIDI instrument pages. Page 0 is the stock
+// row (columns 2..7 = A..F). Page 1 is G..L, page 2 is M..S.
+int midiCcSlot(int page, int c) {
+    if (page <= 0) return c - 2;
+    if (page == 1) return 6 + c;
+    return 12 + c;
+}
+}  // namespace
+
 int InstrumentScreen::columns() const {
-    if (mode == 3) return 8;
+    if (mode == 3) return midiPage == 0 ? 8 : (midiPage == 1 ? 6 : 7);
     if (mode == 2) return 2;
     if (mode == 1) return 7;
     return effects ? 4 : 7;
@@ -161,17 +173,19 @@ void InstrumentScreen::valueText(int c, char* out, int cap, float* frac, bool* b
         MidiInstrument m = app_.project.midiInstrument(ci - kFirstMidiInstrument);
         // Appendix C §7: col0 Velocity (rec+0), col1 Offset (rec+7 = the
         // sequencer's note-delay byte, spec 13 §I.1), col2..7 CC A..F.
-        if (c == 0) {
+        if (midiPage == 0 && c == 0) {
             std::snprintf(out, size_t(cap), "%d", m.velocity);
             *frac = float(m.velocity) / 127.0f;
-        } else if (c == 1) {
+        } else if (midiPage == 0 && c == 1) {
             const int o = m.extra[0] > 100 ? 100 : m.extra[0];
             std::snprintf(out, size_t(cap), "%d", o);
             *frac = float(o) / 100.0f;
         } else {
-            const int v = m.cc[c - 2] > 130 ? 130 : m.cc[c - 2];
+            const int slot = midiCcSlot(midiPage, c);
+            const int raw = slot >= 0 && slot < MidiInstrument::kCcCount ? m.cc[slot] : 0;
+            const int v = raw > 130 ? 130 : raw;
             // Appendix C §7 list 0xa6750: CC number + role name, PC, AT.
-            midicc::ccValueName(m.cc[c - 2], out, cap);
+            midicc::ccValueName(uint8_t(raw), out, cap);
             *frac = float(v) / 130.0f;
         }
         return;
@@ -278,9 +292,13 @@ void InstrumentScreen::edit(int c, int d, bool tap) {
     if (mode == 3) {
         const int idx = ci - kFirstMidiInstrument;
         MidiInstrument m = a.project.midiInstrument(idx);
-        if (c == 0) m.velocity = uint8_t(clampi(m.velocity + d, 0, 127));
-        else if (c == 1) m.extra[0] = uint8_t(clampi(clampi(m.extra[0], 0, 100) + d, 0, 100));
-        else m.cc[c - 2] = uint8_t(clampi(clampi(m.cc[c - 2], 0, 130) + clampi(d, -10, 10), 0, 130));
+        if (midiPage == 0 && c == 0) m.velocity = uint8_t(clampi(m.velocity + d, 0, 127));
+        else if (midiPage == 0 && c == 1) m.extra[0] = uint8_t(clampi(clampi(m.extra[0], 0, 100) + d, 0, 100));
+        else {
+            const int slot = midiCcSlot(midiPage, c);
+            if (slot >= 0 && slot < MidiInstrument::kCcCount)
+                m.cc[slot] = uint8_t(clampi(clampi(m.cc[slot], 0, 130) + clampi(d, -10, 10), 0, 130));
+        }
         a.project.setMidiInstrument(idx, m);
         a.markProjectDirty();
         return;
@@ -312,9 +330,12 @@ void InstrumentScreen::reset(int c) {
     if (mode == 3) {
         const int idx = ci - kFirstMidiInstrument;
         MidiInstrument m = a.project.midiInstrument(idx), def;
-        if (c == 0) m.velocity = def.velocity;           // reset 127
-        else if (c == 1) m.extra[0] = 0;                  // Offset reset 0
-        else m.cc[c - 2] = def.cc[c - 2];
+        if (midiPage == 0 && c == 0) m.velocity = def.velocity;   // reset 127
+        else if (midiPage == 0 && c == 1) m.extra[0] = 0;         // Offset reset 0
+        else {
+            const int slot = midiCcSlot(midiPage, c);
+            if (slot >= 0 && slot < MidiInstrument::kCcCount) m.cc[slot] = def.cc[slot];
+        }
         a.project.setMidiInstrument(idx, m);
         a.markProjectDirty();
         return;
@@ -355,6 +376,8 @@ void InstrumentScreen::refreshBar() {
     static const char* kEnv[7] = {"Destination", "Type", "Attack", "Decay", "Sustain", "Release", "Amount"};
     static const char* kLfo[7] = {"Destination", "Type", "Shape", "Speed", "Amount", "", ""};
     static const char* kMidi[8] = {"Velocity", "Offset", "CC A", "CC B", "CC C", "CC D", "CC E", "CC F"};
+    static const char* kMidiG[6] = {"CC G", "CC H", "CC I", "CC J", "CC K", "CC L"};
+    static const char* kMidiM[7] = {"CC M", "CC N", "CC O", "CC P", "CC Q", "CC R", "CC S"};
     if (mode == 2) {
         // Appendix C §8 bottom labels.
         b.set(1, "CC List");
@@ -368,9 +391,10 @@ void InstrumentScreen::refreshBar() {
     // 050505 strip [S snap 011, Part 2 C5].
     b.stripBg = wg::mix(0x000000, ui_.th().slot(slot::kStrip + 1), 128);
     if (mode == 3) {
-        for (int i = 0; i < 8; ++i) {
+        const char* const* names = midiPage == 0 ? kMidi : (midiPage == 1 ? kMidiG : kMidiM);
+        for (int i = 0; i < columns(); ++i) {
             valueText(i, v, sizeof(v), &fr, &bi);
-            b.set(i, kMidi[i], v);
+            b.set(i, names[i], v);
         }
         return;
     }
@@ -490,10 +514,16 @@ void InstrumentScreen::onButton(uint8_t id, uint8_t state) {
     }
     switch (id) {
         case btn::Left:
-            if (selectable(column - 1)) --column;
+            if (mode == 3 && column == 0 && midiPage > 0) {
+                --midiPage;
+                column = columns() - 1;
+            } else if (selectable(column - 1)) --column;
             break;
         case btn::Right:
-            if (selectable(column + 1)) ++column;
+            if (mode == 3 && column + 1 >= columns() && midiPage < 2) {
+                ++midiPage;
+                column = 0;
+            } else if (selectable(column + 1)) ++column;
             break;
         case btn::Up:
         case btn::Down: {
@@ -506,7 +536,7 @@ void InstrumentScreen::onButton(uint8_t id, uint8_t state) {
             // top-down lists too (user reports: Up moved down in them).
             else if (mode == 1 && ci < kSampleInstrumentCount)
                 inv = column <= 1 || ((column == 2 || column == 3) && iedit::autoType(a.instruments[ci], dest) == 2);
-            else if (mode == 3) inv = column >= 2;
+            else if (mode == 3) inv = midiPage > 0 || column >= 2;
             const int d = id == btn::Up ? 1 : -1;
             edit(column, inv ? -d : d, false);
             break;
@@ -536,7 +566,7 @@ uint8_t InstrumentScreen::auditionNote() const {
 bool InstrumentScreen::encoderOnList() const {
     if (mode == 2) return true;   // CC mapping list
     if (mode == 0) return !effects && column == 4;   // filter type
-    if (mode == 3) return column >= 2;
+    if (mode == 3) return midiPage > 0 || column >= 2;
     const uint8_t ci = app_.currentInstrument();
     if (ci >= kSampleInstrumentCount) return false;
     // Automation 2/2: Destination, Type; LFO Shape and Speed.
@@ -687,7 +717,7 @@ void InstrumentScreen::draw(Gfx& g) {
     const Theme& th = ui_.th();
     const uint8_t ci = a.currentInstrument();
     char title[48], sub[48];
-    if (mode == 3) std::snprintf(title, sizeof(title), "MIDI Instrument Parameters");
+    if (mode == 3) std::snprintf(title, sizeof(title), "MIDI Instrument Parameters %d/3", midiPage + 1);
     else if (mode == 1) std::snprintf(title, sizeof(title), "Instrument Automation 2/2");
     else if (effects) std::snprintf(title, sizeof(title), "Instrument Effects");
     else std::snprintf(title, sizeof(title), "Instrument Parameters 1/2");
@@ -739,9 +769,11 @@ void InstrumentScreen::draw(Gfx& g) {
                 listColumn(g, th, c, 1, kFilterNames, 4, clampi(ft, 0, 3));
                 continue;
             }
-            if (mode == 3 && c >= 2) {
+            if (mode == 3 && (midiPage > 0 || c >= 2)) {
                 const MidiInstrument m = a.project.midiInstrument(ci - kFirstMidiInstrument);
-                ccListColumn(g, th, c, clampi(m.cc[c - 2], 0, midicc::kCcValueCount - 1));
+                const int slot = midiCcSlot(midiPage, c);
+                const int raw = slot >= 0 && slot < MidiInstrument::kCcCount ? m.cc[slot] : 0;
+                ccListColumn(g, th, c, clampi(raw, 0, midicc::kCcValueCount - 1));
                 continue;
             }
             valueText(c, v, sizeof(v), &fr, &bi);

@@ -52,9 +52,22 @@ enum class FxId : uint8_t {
     Tune = 40,
     SlideUp = 41,
     SlideDown = 42,
+    MidiCcG = 43,
+    MidiCcH = 44,
+    MidiCcI = 45,
+    MidiCcJ = 46,
+    MidiCcK = 47,
+    MidiCcL = 48,
+    MidiCcM = 49,
+    MidiCcN = 50,
+    MidiCcO = 51,
+    MidiCcP = 52,
+    MidiCcQ = 53,
+    MidiCcR = 54,
+    MidiCcS = 55,
 };
 
-constexpr int kFxCount = 43;
+constexpr int kFxCount = 56;
 
 struct FxInfo {
     char symbol;          // single-character column symbol

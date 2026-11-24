@@ -467,6 +467,31 @@ TEST(midi_instrument_cc_columns_are_lists) {
     applyFontSet(&h.disp, 0);
 }
 
+TEST(midi_cc_gs_pages_keep_the_display_list) {
+    Harness h;
+    App& a = *h.app;
+    a.setCurrentInstrument(uint8_t(kFirstMidiInstrument));
+    h.tap(btn::InstrParams);
+    InstrumentScreen& s = instrScreen(h);
+    CHECK_EQ(s.mode, 3);
+    CHECK_EQ(s.midiPage, 0);
+    for (int i = 0; i < 8; ++i) h.tap(btn::Right);
+    CHECK_EQ(s.midiPage, 1);
+    CHECK(std::strcmp(a.ui.bar.label[0].top, "CC G") == 0);
+    h.enc(3);
+    CHECK_EQ(a.project.midiInstrument(0).cc[6], 77);
+    CHECK_EQ(a.project.midiInstrument(0).extra[0], 0);
+    for (int i = 0; i < 6; ++i) h.tap(btn::Right);
+    CHECK_EQ(s.midiPage, 2);
+    CHECK(std::strcmp(a.ui.bar.label[6].top, "CC S") == 0);
+    h.tap(btn::F7);
+    h.enc(1);
+    CHECK_EQ(a.project.midiInstrument(0).cc[18], 21);
+    a.ui.dirty();
+    h.run(40);
+    CHECK(a.ui.lastDlWords() < Ui::kDlTargetWords);
+}
+
 TEST(midi_instrument_title_names_the_channel) {
     // Manual p.256 "51. MIDI Channel 1" style / spec 20 §1.2 (pattern screen
     // already prints "N. MIDI Channel n"): MANUAL_AUDIT_2026-10-23 #26.

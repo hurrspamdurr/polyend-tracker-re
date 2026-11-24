@@ -88,16 +88,46 @@ bool savedInstrumentPath(char* out, size_t cap, const char* base, int n, const c
     return fmt(out, cap, std::snprintf(out, cap, "%s/instruments/%d %s.pti", base, n, name));
 }
 
+namespace {
+// [I] project.otcc sits next to project.mt. Stock firmware never opens it.
+bool midiCcSidePath(char* out, size_t cap, const char* projectPath) {
+    const char* slash = std::strrchr(projectPath, '/');
+    const size_t dirLen = slash ? size_t(slash - projectPath) : 0;
+    const char* file = "project.otcc";
+    const size_t fileLen = 12;
+    if (dirLen + (dirLen ? 1 : 0) + fileLen + 1 > cap) return false;
+    if (dirLen) {
+        std::memcpy(out, projectPath, dirLen);
+        out[dirLen] = '/';
+        std::memcpy(out + dirLen + 1, file, fileLen + 1);
+    } else {
+        std::memcpy(out, file, fileLen + 1);
+    }
+    return true;
+}
+}  // namespace
+
 FmtStatus loadProjectFile(IStorage& fs, const char* path, Project& p, ProjectLoadInfo* info) {
     uint32_t got = 0;
     FmtStatus st = readWholeFile(fs, path, g_io, mt::kFileSize, &got);
     if (st != FmtStatus::Ok) return st;
-    return decodeProject(g_io, got, p, info);
+    st = decodeProject(g_io, got, p, info);
+    if (st != FmtStatus::Ok) return st;
+    char side[512];
+    if (midiCcSidePath(side, sizeof(side), path) &&
+        readWholeFile(fs, side, g_io, kMidiCcSideSize, &got) == FmtStatus::Ok)
+        decodeMidiCcSide(g_io, got, p);
+    return FmtStatus::Ok;
 }
 
 FmtStatus saveProjectFile(IStorage& fs, const char* path, const Project& p) {
     encodeProject(p, g_io);
-    return writeWholeFile(fs, path, g_io, mt::kFileSize);
+    FmtStatus st = writeWholeFile(fs, path, g_io, mt::kFileSize);
+    if (st != FmtStatus::Ok) return st;
+    char side[512];
+    if (!midiCcSidePath(side, sizeof(side), path)) return FmtStatus::Ok;
+    encodeMidiCcSide(p, g_io);
+    return writeWholeFile(fs, side, g_io, kMidiCcSideSize);
 }
 
 // 2.x: pattern files are the Tracker Mini 16-track layout (spec 21 §4):

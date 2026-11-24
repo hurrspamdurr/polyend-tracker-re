@@ -48,12 +48,27 @@ const FxInfo kFxTable[kFxCount] = {
     {'U', "Tune", 0, 48, 0},             // displayed -24..24
     {'F', "Slide Up", 0, 255, 0},
     {'J', "Slide Down", 0, 255, 0},
+    // [I] Grid letters stock FX does not already use. The menu name is the CC letter.
+    {'u', "MIDI CC G", 0, 127, 0},
+    {'w', "MIDI CC H", 0, 127, 0},
+    {'y', "MIDI CC I", 0, 127, 0},
+    {'z', "MIDI CC J", 0, 127, 0},
+    {'K', "MIDI CC K", 0, 127, 0},
+    {'N', "MIDI CC L", 0, 127, 0},
+    {'W', "MIDI CC M", 0, 127, 0},
+    {'Q', "MIDI CC N", 0, 127, 0},
+    {'O', "MIDI CC O", 0, 127, 0},
+    {'X', "MIDI CC P", 0, 127, 0},
+    {'Y', "MIDI CC Q", 0, 127, 0},
+    {'Z', "MIDI CC R", 0, 127, 0},
+    {'o', "MIDI CC S", 0, 127, 0},
 };
 }  // namespace
 
 const uint8_t kFxMenuOrder[kFxCount] = {
     0, 1, 18, 31, 34, 19, 15, 17, 2, 20, 4, 3, 21, 5, 6, 16, 7, 26, 22, 25, 23, 24,
-    35, 36, 33, 38, 27, 29, 28, 30, 32, 39, 40, 41, 42, 8, 9, 10, 11, 12, 37, 14, 13,
+    35, 36, 33, 38, 27, 29, 28, 30, 32, 39, 40, 41, 42, 8, 9, 10, 11, 12, 37,
+    43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 14, 13,
 };
 
 const FxInfo& fxInfo(uint8_t id) { return kFxTable[id < kFxCount ? id : 0]; }

@@ -28,7 +28,7 @@ TEST(constants) {
 }
 
 TEST(fx_table) {
-    CHECK_EQ(kFxCount, 43);
+    CHECK_EQ(kFxCount, 56);
     CHECK_STR(fxInfo(FxId::None).name, "None");
     CHECK_STR(fxInfo(FxId::Tempo).name, "Tempo");
     CHECK_EQ(fxInfo(FxId::Tempo).minValue, 4);
@@ -44,8 +44,9 @@ TEST(fx_table) {
     CHECK_EQ(fxInfo(FxId::Volume).symbol, 'V');
     CHECK_STR(fxInfo(uint8_t(200)).name, "None");
     CHECK(fxIdValid(42));
-    CHECK(!fxIdValid(43));
-    // Menu order is a permutation of 0..42.
+    CHECK(fxIdValid(55));
+    CHECK(!fxIdValid(56));
+    // Menu order is a permutation of every FX id.
     bool seen[kFxCount] = {};
     for (int i = 0; i < kFxCount; ++i) {
         CHECK(kFxMenuOrder[i] < kFxCount);
@@ -53,7 +54,7 @@ TEST(fx_table) {
     }
     for (bool s : seen) CHECK(s);
     CHECK_EQ(kFxMenuOrder[2], 18);
-    CHECK_EQ(kFxMenuOrder[42], 13);
+    CHECK_EQ(kFxMenuOrder[kFxCount - 1], 13);
 }
 
 TEST(step_clear_keeps_values) {

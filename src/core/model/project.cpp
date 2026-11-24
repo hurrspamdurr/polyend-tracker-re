@@ -212,14 +212,22 @@ void Project::setSynthSlot(int slot, const SynthSlotRecord& r) {
     r.encode(&values[mt::synthSlotOff(slot) - mt::kValuesOff]);
 }
 
+void Project::resetMidiCcExt() {
+    const MidiInstrument d;
+    for (int i = 0; i < kMidiInstrumentCount; ++i)
+        std::memcpy(midiCcExt[i], d.cc + 6, kMidiCcExt);
+}
+
 MidiInstrument Project::midiInstrument(int idx) const {
     MidiInstrument m;
     if (idx < 0 || idx >= kMidiInstrumentCount) return m;
+    // spec 02 §3.3: channel, velocity, CC A..F, then 8 reserved (byte 8 = delay).
     const uint8_t* p = &values[mt::kMidiRecords + idx * mt::kMidiRecordSize - mt::kValuesOff];
     m.channel = p[0];
     m.velocity = p[1];
     std::memcpy(m.cc, p + 2, 6);
     std::memcpy(m.extra, p + 8, 8);
+    std::memcpy(m.cc + 6, midiCcExt[idx], kMidiCcExt);   // [I] CC G..S
     return m;
 }
 
@@ -230,6 +238,7 @@ void Project::setMidiInstrument(int idx, const MidiInstrument& m) {
     p[1] = m.velocity;
     std::memcpy(p + 2, m.cc, 6);
     std::memcpy(p + 8, m.extra, 8);
+    std::memcpy(midiCcExt[idx], m.cc + 6, kMidiCcExt);   // [I] CC G..S
 }
 
 void Project::setName(const char* s) { copyStr(name, sizeof(name), s); }

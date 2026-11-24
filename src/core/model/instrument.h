@@ -117,11 +117,14 @@ private:
     explicit Instrument(NoInit) {}
 };
 
-// MIDI instrument record (16 bytes each in project.mt at 0x4FD, spec 02 §3.3).
+// MIDI instrument. cc[0..5] (A..F) and extra[0] (sequencer delay, spec 03 §3.3)
+// are the stock 16-byte project.mt record at 0x4FD. [I] cc[6..18] (G..S) is
+// OpenTracker side data (Project::midiCcExt), not bytes 8..15 of that record.
 struct MidiInstrument {
+    static constexpr int kCcCount = 19;   // A..S
     uint8_t channel = 0;
     uint8_t velocity = 127;
-    uint8_t cc[6] = {1, 5, 7, 11, 64, 128};  // CC numbers for MIDI CC FX a..f
+    uint8_t cc[kCcCount] = {1, 5, 7, 11, 64, 128, 74, 71, 73, 72, 91, 93, 10, 2, 16, 17, 18, 19, 20};
     uint8_t extra[8] = {};
 };
 
