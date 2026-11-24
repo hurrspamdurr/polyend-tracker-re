@@ -40,7 +40,7 @@ const char* const kDescription[kFxCount] = {
     "No effect in this slot. As a value it clears what the slot set before.",   // 0 None
     "Stops a roll or arp started from this column and undoes this slot's earlier change to the voice.",   // 1 Off
     "Delays the note by a fraction of a step. Higher values start it later.",   // 2 Micro-move
-    "Repeats the note within the step. The value picks the roll type (plain, fading out, fading in, note variations) and the hits per step.",   // 3 Roll
+    "Repeats the note within the step. The value picks the roll type (plain, fading out, fading in, note variations) and the hits per step. A MIDI CC in the other column is sent on every hit, and a fade roll scales that value with the velocity.",   // 3 Roll
     "Probability in percent that the step plays.",   // 4 Chance
     "Plays a random note within +/- the value around the step note, kept inside the project scale.",   // 5 Random Note
     "Plays a random instrument within +/- the value around the step instrument.",   // 6 Random Instrument

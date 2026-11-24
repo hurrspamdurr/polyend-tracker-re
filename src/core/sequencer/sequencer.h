@@ -341,6 +341,8 @@ private:
     void sendMidi(uint8_t b0, uint8_t b1, uint8_t b2, uint8_t len);
     uint8_t midiNoteNumber(int note) const;
     void sendCcFx(int t, uint8_t letter, uint8_t value, const NoteRec& rec);
+    // Re-sends MIDI CC FX on this note. Fade rolls scale the value with the velocity.
+    void sendStepMidiCcs(int t, const NoteRec& rec);
     void sendPitchBendFx(uint8_t instr, uint8_t value);
 
     bool liveTargetStep(int t, int& target) const;

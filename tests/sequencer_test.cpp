@@ -295,6 +295,47 @@ TEST(roll_volume_ramp) {
     CHECK_EQ(on[4].a, 62);  // new note clears the roll
 }
 
+// A MIDI CC in the other column is sent on every roll hit. Fade rolls scale it
+// with the same ramp as the note velocity.
+TEST(roll_resends_midi_cc) {
+    Rig r(120.0f);
+    MidiInstrument mi = r.project.midiInstrument(0);
+    mi.cc[0] = 74;    // CC A
+    mi.cc[25] = 27;   // CC Z
+    r.project.setMidiInstrument(0, mi);
+
+    r.setNote(0, 0, 60, 48);
+    r.setNote(0, 1, 62, 48);                 // ends the roll after one step
+    r.fxB(0, 0, 3, 4);          // Roll, plain, 4 hits
+    r.fxA(0, 0, 8, 90);         // MIDI CC A
+    r.seq.play(0);
+    r.runUntil([&] { return r.seq.step(0) == 1 && r.seq.microStep(0) > 2; });
+    auto cc = r.sink.midiStatus(0xB0);
+    CHECK_EQ(cc.size(), 4u);
+    for (const auto& e : cc) {
+        CHECK_EQ(e.b, 74);
+        CHECK_EQ(e.c, 90);
+    }
+    CHECK(r.sink.midiNoteOns().size() >= 4u);
+
+    Rig f(120.0f);
+    f.project.setMidiInstrument(0, mi);
+    f.setNote(0, 0, 60, 48);
+    f.setNote(0, 1, 62, 48);
+    f.fxB(0, 0, 3, 1 * 9 + 4);  // Roll fade out, 4 hits
+    f.fxA(0, 0, 62, 100);       // MIDI CC Z
+    f.seq.play(0);
+    f.runUntil([&] { return f.seq.step(0) == 1 && f.seq.microStep(0) > 2; });
+    auto fade = f.sink.midiStatus(0xB0);
+    CHECK_EQ(fade.size(), 4u);
+    const int at[] = {1, 13, 25, 37};
+    for (int i = 0; i < 4 && i < int(fade.size()); ++i) {
+        const int vol = int(100 * (1.0f - float(at[i]) / 48.0f));
+        CHECK_EQ(fade[i].b, 27);
+        CHECK_EQ(fade[i].c, vol);  // CC value 100 scaled by vol/100
+    }
+}
+
 TEST(arp_up_with_chord) {
     Rig r(120.0f);
     r.setNote(0, 0, 60);

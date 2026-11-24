@@ -33,6 +33,19 @@ int ccLetter(uint8_t type) {
     return -1;
 }
 
+// Fade-in / fade-out rolls scale a MIDI CC in the other column with the velocity.
+bool stepFadesRoll(const StepFx* a, const StepFx* b) {
+    const StepFx* cols[2] = {a, b};
+    for (int i = 0; i < 2; ++i) {
+        if (cols[i]->type != 3) continue;
+        const int rv = cols[i]->value > 53 ? 53 : cols[i]->value;
+        if (rv % 9 == 0) continue;
+        const int ty = rv / 9;
+        if (ty == 1 || ty == 2) return true;
+    }
+    return false;
+}
+
 bool consumedBySequencer(uint8_t type) {
     if (ccLetter(type) >= 0) return true;
     switch (type) {
@@ -627,7 +640,8 @@ void Sequencer::stepStart(int t) {
                 if (ccLetter(type) >= 0) {
                     const int letter = ccLetter(type);
                     if (isMidiInstr(p.rec.instr)) {
-                        sendCcFx(t, uint8_t(letter), v, p.rec);
+                        // A fade roll sends this CC with the note, scaled like the velocity.
+                        if (!stepFadesRoll(col[0], col[1])) sendCcFx(t, uint8_t(letter), v, p.rec);
                     } else if (sink_ && letter >= 0 && letter < 6) {
                         // Synth step: macro 1..6 of the slot (Mini manual 7.38). An
                         // FX-only step uses the synth the track plays.
@@ -675,6 +689,8 @@ void Sequencer::handleNote(int t, Pending& p) {
             tr.sinceTrigger = 1;
             if (tr.rollType == 1 || tr.rollType == 2) rec.volume = int8_t(rollVolume(tr));
         }
+        // Fade rolls defer the step's MIDI CC until the velocity is known.
+        if (tr.rollActive && (tr.rollType == 1 || tr.rollType == 2)) sendStepMidiCcs(t, rec);
         triggerNote(t, rec, p.chord && !p.arpSetup, p.chordValue);
         tr.gateLimit = p.gateLimit;
         tr.gate = 0;
@@ -843,6 +859,7 @@ void Sequencer::rollRetrigger(int t) {
     }
     if (tr.rollType == 1 || tr.rollType == 2) rec.volume = int8_t(rollVolume(tr));
     if (isMidiLike(rec.instr)) noteOffTrack(t, NoteOffMode::Off);
+    sendStepMidiCcs(t, rec);
     triggerNote(t, rec, false, 0);
     tr.last = rec;
     tr.gateLimit = int16_t(tr.rollRate / 2);
@@ -1327,6 +1344,26 @@ void Sequencer::sendMidi(uint8_t b0, uint8_t b1, uint8_t b2, uint8_t len) {
 
 uint8_t Sequencer::midiNoteNumber(int note) const {
     return uint8_t(clampi(note + 12 * (2 - int(settings_.middleC)), 0, 127));
+}
+
+void Sequencer::sendStepMidiCcs(int t, const NoteRec& rec) {
+    if (!isMidiInstr(rec.instr)) return;
+    const TrackState& tr = tracks_[t];
+    const StepFx* col[2] = {&rec.fxB, &rec.fxA};
+    int scale = 100;
+    if (tr.rollActive && (tr.rollType == 1 || tr.rollType == 2)) {
+        const int base = tr.rollBaseVol > 0 ? tr.rollBaseVol : 100;
+        const int vol = rollVolume(tr);
+        scale = vol * 100 / base;
+        if (scale < 0) scale = 0;
+        if (scale > 100) scale = 100;
+    }
+    for (int c = 0; c < 2; ++c) {
+        const int letter = ccLetter(col[c]->type);
+        if (letter < 0) continue;
+        const int raw = col[c]->value > 127 ? 127 : col[c]->value;
+        sendCcFx(t, uint8_t(letter), uint8_t(raw * scale / 100), rec);
+    }
 }
 
 void Sequencer::sendCcFx(int t, uint8_t letter, uint8_t value, const NoteRec& rec) {
