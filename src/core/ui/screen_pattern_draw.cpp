@@ -317,7 +317,7 @@ void PatternScreen::drawGridVertical(Gfx& g, bool threeTracks) {
             case 1:
                 return (st.note == kNoteEmpty || st.note == kNoteOff || st.note == kNoteCut || st.note == kNoteFade) &&
                        !isMidiInstrument(st.instrument);
-            default: return st.fx[c - 2].type == 0;
+            default: return !st.fx[c - 2].used();
         }
     };
     for (int pass = 0; pass < 2; ++pass) {
@@ -635,13 +635,18 @@ namespace {
 struct PopupCtx {
     App* app;
     int kind;
+    const PatternScreen* scr;   // FX a-f on a synth step name the macro (fxMacroName)
 };
 void popupItem(void* ctx, int i, char* out, int cap) {
     const PopupCtx* p = static_cast<const PopupCtx*>(ctx);
     App& a = *p->app;
     if (p->kind == 3) {
         const FxInfo& f = fxInfo(kFxMenuOrder[i]);
-        std::snprintf(out, size_t(cap), "%c - %s", f.symbol, f.name);
+        char m[32];
+        if (p->scr && p->scr->fxMacroName(kFxMenuOrder[i], m, sizeof(m)))
+            std::snprintf(out, size_t(cap), "%c - %s", f.symbol, m);
+        else
+            std::snprintf(out, size_t(cap), "%c - %s", f.symbol, f.name);
     } else if (p->kind == 5) {
         // MIDI tracks: Synth 1..3, then the MIDI channels.
         const int ins = synthui::popupInstrumentMidi(i);
@@ -684,13 +689,13 @@ void PatternScreen::drawListPopup(Gfx& g) {
         g.fill(x + 2, 29, kPopupX - x, kScreenH - 29, panelC);
     }
     // List.
-    PopupCtx ctx{&a, kind};
+    PopupCtx ctx{&a, kind, this};
     wg::ListView v;
     v.x = kPopupX;
     v.y = 30;
     v.w = 200;
     v.h = kind == 3 ? 409 : 394;
-    v.count = kind == 3 ? kFxCount : (kind == 5 ? synthui::kMidiPopupCount : kInstrumentCount + kSynthSlotCount);
+    v.count = kind == 3 ? kFxListCount : (kind == 5 ? synthui::kMidiPopupCount : kInstrumentCount + kSynthSlotCount);
     v.sel = pop_.cursor();
     popTop_ = wg::listFollow(v.sel, v.count, wg::listVisibleRows(v.h), popTop_);
     v.top = popTop_;
@@ -710,7 +715,9 @@ void PatternScreen::drawListPopup(Gfx& g) {
         char buf[48];
         popupItem(&ctx, pop_.cursor(), buf, sizeof(buf));
         g.text(x + 13, 34 + 13, kFont1, th.slot(slot::kList + 4), buf, IDisplay::kOptCenterY);
-        wg::textBox(g, th, x + 8, 62, 232, 360, kFont5, fxHelpText(kFxMenuOrder[pop_.cursor() < kFxCount ? pop_.cursor() : 0]), 3);
+        const uint8_t type = kFxMenuOrder[pop_.cursor() < kFxListCount ? pop_.cursor() : 0];
+        char m[32];
+        wg::textBox(g, th, x + 8, 62, 232, 360, kFont5, fxMacroName(type, m, sizeof(m)) ? fxMacroHelpText(m) : fxHelpText(type), 3);
     }
 }
 

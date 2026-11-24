@@ -42,6 +42,16 @@ struct SynthNoteOn {
     float tickPeriodUs = 0;
 };
 
+// [OT] One synth note of the next step, announced a block ahead
+// (ISequencerSink::synthExpect): track, slot (instrument 64..66), note, or a
+// note-off of the track's synth note (off: 1 = Off / Fade, 2 = Cut).
+struct SynthExpectNote {
+    uint8_t track = 0;
+    uint8_t slot = 0;
+    uint8_t note = 0;
+    uint8_t off = 0;
+};
+
 // MIDI output port mask; bit values follow the Clock/Transport/MIDI-out
 // settings (spec 03 §4.1): 1 = port A, 2 = port B, 3 = both.
 // Port A is taken to be USB and port B the DIN jack (spec 03 §7 item 1, I).
@@ -75,8 +85,25 @@ public:
     // FX CC a..f (macro 0..5) on a synth step: override of the slot's page
     // value until Stop.
     virtual void synthMacroFx(uint8_t slot, uint8_t macro, uint8_t value) { (void)slot; (void)macro; (void)value; }
+    // [OT] Z: slot plays preset n (1..8) or its own patch (0) until the next
+    // Z, a loop end or Stop. Runs before the same step's synthNoteOn. False:
+    // refused (an empty preset, out of range), the slot plays on as it was;
+    // a repeat of the slot's current preset counts as taken.
+    virtual bool synthPreset(uint8_t slot, uint8_t n) { (void)slot; (void)n; return false; }
+    // [OT] Whether synthPreset(slot, n) would take n (0 always): asked from
+    // the audio context, before the Z that sends it.
+    virtual bool synthPresetTakes(uint8_t n) { (void)n; return false; }
+    // The preset the slot plays now (0: its own patch; a patch edit sets 0),
+    // asked from the audio context; -1: not known.
+    virtual int synthPresetOf(uint8_t slot) { (void)slot; return -1; }
     // Transport stop: macro overrides return to the page values.
     virtual void synthTransportStop() {}
+    // [OT] The synth notes and note-offs the next step will play, in the order
+    // the step plays them, sent in the block before that step's block
+    // (internal clock, only when every one of them is certain). The bank fades
+    // now the voices those notes will take, so the step's block does not
+    // render both.
+    virtual void synthExpect(const SynthExpectNote* notes, int count) { (void)notes; (void)count; }
 };
 
 // Routes a sink MIDI message onto the HAL ports (A = USB, B = DIN).
@@ -121,6 +148,16 @@ public:
     virtual void markPatternDirty() {}
     // External Start chooses song play when the Song screen is active (spec 03 §4.3).
     virtual bool songScreenActive() { return false; }
+    // [OT] Z chase, main loop only (never the audio block): what the Z
+    // commands before a start position leave the synth slots on. Song mode:
+    // playlist positions 0..songPos-1, then steps 0..lastStepInclusive of
+    // `pattern`; pattern mode: those steps only (-1 = none). preset[s] comes
+    // in as 0 (own patch) and lastInstr[t] as 0xFF (no note seen): the
+    // default leaves both, the app fills in what the pattern data says.
+    virtual void synthChase(bool songMode, int songPos, uint8_t pattern, int lastStepInclusive,
+                            uint8_t preset[kSynthSlotCount], uint8_t lastInstr[kTrackCount]) {
+        (void)songMode; (void)songPos; (void)pattern; (void)lastStepInclusive; (void)preset; (void)lastInstr;
+    }
 };
 
 }  // namespace ot

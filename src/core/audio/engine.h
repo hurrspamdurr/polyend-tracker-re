@@ -364,6 +364,10 @@ public:
     void synthNoteOff(uint8_t track, NoteOffMode mode) override;
     void synthApplyFx(uint8_t track, uint8_t type, uint8_t value) override;
     void synthMacroFx(uint8_t slot, uint8_t macro, uint8_t value) override;
+    bool synthPreset(uint8_t slot, uint8_t n) override;
+    bool synthPresetTakes(uint8_t n) override;
+    int synthPresetOf(uint8_t slot) override { return synth_.presetOf(slot); }
+    void synthExpect(const SynthExpectNote* notes, int count) override;
     void synthTransportStop() override;
 
 private:

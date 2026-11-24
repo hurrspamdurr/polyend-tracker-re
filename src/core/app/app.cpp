@@ -1,4 +1,6 @@
 #include "app/app.h"
+#include "app/synth_chase.h"
+#include "app/synth_presets.h"
 
 #include <cstdio>
 #include <cstring>
@@ -79,6 +81,9 @@ bool App::init(const HalRefs& hal, const AppMemory& mem) {
     engine.setExportScratch(mem_.exportStems);
     // Synth slots play the App's patches (2.x M3, audio/synth_bank.h).
     for (int s = 0; s < kSynthSlotCount; ++s) engine.synth().bindPatch(s, &patches_[s]);
+    resetSynthPresets();
+    engine.synth().bindPresets(presets::table());
+    chase::resetAll();   // [OT] Z chase: one App owns the summaries
     undo.attach(mem_.undo, mem_.undoNums, mem_.undoSlots);
     fileUndo.attach(mem_.fileUndo, mem_.fileUndoNums, mem_.fileUndoSlots);
     for (auto& in : instruments) in.setDefault();
@@ -466,7 +471,13 @@ void App::loop() {
     // Transport bookkeeping.
     const bool playing = seq.isPlaying();
     if (playing && !wasPlaying_) playStart_ = now;
+    // [OT] Stop zeroed the slots' presets (also a MIDI Stop while Play waits
+    // for a MIDI Start, or while stopped).
+    chase::Memory& cm = chase::mem();
+    if ((!playing && wasPlaying_) || cm.seqStops != seq.stopCount()) ++cm.stopSerial;
+    cm.seqStops = seq.stopCount();
     wasPlaying_ = playing;
+    serviceSynthChase();
     if (stepChanged_) {
         stepChanged_ = false;
         ui.dirty();
@@ -693,6 +704,7 @@ void App::handleControlChange(uint8_t cc, uint8_t value) {
 
 void App::setPresent(int num, bool on) {
     if (num < 1 || num > kPatternCount) return;
+    chase::invalidate(num);   // [OT] a pattern store write: its Z chase summary is stale
     if (on) present_[num >> 3] |= uint8_t(1u << (num & 7));
     else present_[num >> 3] &= uint8_t(~(1u << (num & 7)));
 }
@@ -702,7 +714,7 @@ bool App::patternHasData(int num) {
     auto hasData = [](const Track& t) {
         for (int s = 0; s < kStepCount; ++s) {
             const Step& st = t.steps[s];
-            if (st.note != kNoteEmpty || st.fx[0].type || st.fx[1].type) return true;
+            if (st.note != kNoteEmpty || st.fx[0].used() || st.fx[1].used()) return true;
         }
         return false;
     };
@@ -727,6 +739,7 @@ int App::firstEmptyPattern() {
 
 void App::markPatternDirty(int num) {
     if (num < 1 || num > kPatternCount) return;
+    chase::invalidate(num);
     patDirty_[num >> 3] |= uint8_t(1u << (num & 7));
     setPresent(num, true);
     unsaved_ = true;
@@ -765,6 +778,7 @@ void App::reportExtPoolFull() {
 
 Track& App::storedTrack(int num, int t) {
     if (!validNum(num) || t < 0 || t >= kTrackCount) return *extDiscard_;
+    chase::invalidate(num);   // write access
     if (t < kStockTrackCount) return storedStock(num).tracks[t];
     const int e = t - kStockTrackCount;
     if (Track* b = ext_.find(num, e)) return *b;
@@ -795,6 +809,7 @@ void App::readStoredTrack(int num, int t, Track& out) const {
 
 bool App::storePattern(int num, const Pattern& p) {
     if (!validNum(num)) return false;
+    chase::invalidate(num);
     PatternStock& st = storedStock(num);
     p.copyStockTo(st);
     bool ok = true;
@@ -841,17 +856,19 @@ int App::compactExtTracks(int num) {
 }
 
 void App::clearExtTracks(int num) {
+    chase::invalidate(num);
     ext_.releasePattern(num);
     if (validNum(num)) extKeep_[num] = 0;   // dropped on purpose: nothing to keep from the file
 }
 
 void App::defaultStored(int num) {
     if (!validNum(num)) return;
-    clearExtTracks(num);
+    clearExtTracks(num);   // the Z chase summary goes with it
     defaultPattern(storedStock(num));
 }
 
 void App::resetPatternStore() {
+    chase::invalidateAll();
     ext_.clear();
     std::memset(extKeep_, 0, sizeof(extKeep_));
     extFullReported_ = 0;
@@ -975,7 +992,8 @@ bool App::redoEdit() {
     return true;
 }
 
-void App::copyToClipboard(const SelRect& r) {
+void App::copyToClipboard(const SelRect& r, int col) {
+    clipCol_ = int8_t(col);
     *mem_.clipboard = pattern();
     clipRect_ = r;
     clipValid_ = true;
@@ -1199,6 +1217,7 @@ void App::streamUnbindAll() {
         stream_.streamOf[i] = -1;
         stream_.warnedMode[i] = 0xFF;
     }
+    std::memset(streamSrc_, 0, sizeof(streamSrc_));
 }
 
 void App::serviceStreams(uint32_t nowMs) {
@@ -1224,6 +1243,12 @@ void App::streamUnbind(int slot) {
     engine.setStreamSource(slot, nullptr);
     if (hal_.streamReader) hal_.streamReader->unbind(uint8_t(slot));
     stream_.streamOf[slot] = -1;
+    setBitOf(streamSrc_, slot, false);
+}
+
+// Issue #184: nothing plays, records or streams (the copies run then).
+bool App::copyIdle() const {
+    return !seq.isPlaying() && !seq.isArmed() && streamActive() == 0 && !capture.active();
 }
 
 void App::refreshStreamSources() {

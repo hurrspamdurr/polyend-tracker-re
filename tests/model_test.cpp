@@ -45,16 +45,18 @@ TEST(fx_table) {
     CHECK_STR(fxInfo(uint8_t(200)).name, "None");
     CHECK(fxIdValid(42));
     CHECK(fxIdValid(62));
-    CHECK(!fxIdValid(63));
-    // Menu order is a permutation of every FX id.
-    bool seen[kFxCount] = {};
-    for (int i = 0; i < kFxCount; ++i) {
-        CHECK(kFxMenuOrder[i] < kFxCount);
+    CHECK(!fxIdValid(kFxSynthPreset));
+    // Menu order is a permutation of every list id. Break stays where the
+    // stock menu put it, and Z (the preset command) stays on pad 43.
+    bool seen[kFxListCount] = {};
+    for (int i = 0; i < kFxListCount; ++i) {
+        CHECK(kFxMenuOrder[i] < kFxListCount);
         seen[kFxMenuOrder[i]] = true;
     }
     for (bool s : seen) CHECK(s);
     CHECK_EQ(kFxMenuOrder[2], 18);
-    CHECK_EQ(kFxMenuOrder[kFxCount - 1], 13);
+    CHECK_EQ(kFxMenuOrder[42], 13);
+    CHECK_EQ(kFxMenuOrder[43], kFxSynthPreset);
 }
 
 TEST(step_clear_keeps_values) {
@@ -173,4 +175,48 @@ TEST(pattern_names) {
     n.set(6, "0123456789012345678901234567890123");
     CHECK_EQ(std::strlen(n.get(6)), 30u);
     CHECK_STR(n.get(300), "");
+}
+
+TEST(preset_cmd_helpers) {
+    // A pattern's Z command is FX type 0 with value 0xD0 + n. The list id is not a stored type.
+    CHECK(!fxIdValid(kFxSynthPreset));
+    CHECK_EQ(kFxListCount, kFxCount + 1);
+    CHECK_EQ(int(fxInfo(kFxSynthPreset).symbol), int('Z'));
+    CHECK_EQ(int(kFxMenuOrder[43]), int(kFxSynthPreset));
+    CHECK_EQ(int(kFxMenuOrder[42]), int(uint8_t(FxId::BreakPattern)));   // stock list unchanged
+    for (int n = 0; n <= kSynthPresetCount; ++n) {
+        const uint8_t v = uint8_t(kFxPresetCmdBase + n);
+        CHECK(isPresetCmd(0, v));
+        CHECK_EQ(int(presetCmdIndex(v)), n);
+        CHECK_EQ(int(fxLogicalType(0, v)), int(kFxSynthPreset));
+        CHECK_EQ(int(fxLogicalValue(0, v)), n);
+    }
+    CHECK(!isPresetCmd(0, uint8_t(kFxPresetCmdBase - 1)));
+    CHECK(!isPresetCmd(0, uint8_t(kFxPresetCmdBase + kSynthPresetCount + 1)));
+    CHECK(!isPresetCmd(uint8_t(FxId::SlideUp), kFxPresetCmdBase));   // a real Slide value
+    CHECK_EQ(int(fxLogicalType(uint8_t(FxId::SlideUp), 210)), int(uint8_t(FxId::SlideUp)));
+    CHECK_EQ(int(fxLogicalValue(uint8_t(FxId::SlideUp), 210)), 210);
+}
+
+TEST(step_clear_leaves_no_preset_cmd_behind) {
+    Step s;
+    s.fx[0] = StepFx{0, uint8_t(kFxPresetCmdBase + 3)};
+    s.fx[1] = StepFx{uint8_t(FxId::SlideUp), 210};   // cleared, 210 under type 0 would read as a Z
+    s.clear();
+    CHECK(!isPresetCmd(s.fx[0].type, s.fx[0].value));
+    CHECK(!isPresetCmd(s.fx[1].type, s.fx[1].value));
+    Step o;
+    o.fx[0] = StepFx{uint8_t(FxId::Volume), 77};
+    o.clear();
+    CHECK_EQ(int(o.fx[0].value), 77);   // any other value stays, as the stock clear leaves it
+}
+
+TEST(track_blank_counts_preset_cmds) {
+    Track t;
+    t.clear(15);
+    CHECK(t.blank());
+    t.steps[3].fx[1] = StepFx{0, uint8_t(kFxPresetCmdBase + 1)};
+    CHECK(!t.blank());
+    t.steps[3].fx[1] = StepFx{0, 50};   // a stale value is still nothing
+    CHECK(t.blank());
 }

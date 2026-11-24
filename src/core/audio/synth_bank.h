@@ -32,6 +32,15 @@
 // queued note whose own note-off follows within the block, started when every
 // record is busy, is dropped like a pending note that gets its note-off.)
 //
+// [OT] Steal ahead (CPU peaks): a step whose notes steal would render the
+// victims' fades and the new notes in the same block. The sequencer announces
+// the next step's notes and note-offs in the block before it (expect(),
+// ISequencerSink::synthExpect; only steps that are certain one block ahead);
+// the steal rules above run on a copy of the records and the voices they
+// would take fade now. At the step the notes start on time in free records.
+// Only the stolen notes change: they end up to one block (2.9 ms) earlier.
+// Notes past the start cap are not followed (they steal in their own block).
+//
 // Macros: M1..M6 = the slot's page values (record +0x38), overridden by FX
 // CC a..f until Stop; M7 = the note's Volume FX; M8 stored only. Law and the
 // M7 rule: synth_params.h. Evaluated at block rate and ramped across the
@@ -132,7 +141,7 @@ public:
     // Voice starts per block before note-ons wait one block (see above);
     // 0 = no limit (tests). Default kStartsPerBlock.
     static constexpr int kStartsPerBlock = 3;
-    void setStartsPerBlock(int n) { startCap_ = n < 0 ? 0 : n; }
+    void setStartsPerBlock(int n) { startCap_ = uint8_t(n < 0 ? 0 : (n > 255 ? 255 : n)); }
     int queuedNotes() const { return nDefer_; }
     // Block profile of the live block being rendered (block_profile.h):
     // event counts and per-slot engine cycles; nullptr = off.
@@ -149,6 +158,21 @@ public:
     // The patch's values / macros / engine changed: re-read at the next block
     // (parameter edits apply live; a new engine restarts the slot).
     void patchChanged(int s);
+    // [OT] Z: the table of kSynthPresetCount presets (engine 0 = empty), bound
+    // once. presetSelect(s, n) makes slot s play preset n (1..), or its own
+    // patch (0), until the next select, an edit of its patch, or Stop.
+    // False: refused (out of range, or an empty preset), nothing changes.
+    void bindPresets(const SynthPatch* presets) { presets_ = presets; }
+    bool presetSelect(int s, uint8_t n);
+    // [OT] Whether presetSelect would take n: 0, or a preset that holds a patch.
+    bool presetTakes(uint8_t n) const {
+        return n == 0 || (n <= kSynthPresetCount && presets_ && presets_[n - 1].engine != 0);
+    }
+    uint8_t presetOf(int s) const { return slots_[clampSlot(s)].preset; }
+    // [OT] Preset n's entry was edited (values, macros, mix or engine): every
+    // slot on it re-reads it at the next block and stays on it (a value edit
+    // ramps, a new engine restarts the slot). Main loop.
+    void presetChanged(uint8_t n);
     // The project record of slot s (spec 21 §3.3). Gain / pan / sends ramp,
     // polyphony applies to new notes, a model change silences the slot.
     void setSlotRecord(int s, const SynthSlotRecord& r);
@@ -179,6 +203,8 @@ public:
     void setTrackPerf(int t, const SynthPerf& p);
     const SynthPerf& trackPerf(int t) const { return perf_[t < 0 || t >= kSynthTracks ? 0 : t]; }
     void applyFx(int track, uint8_t type, uint8_t value);
+    // [OT] Steal ahead (header): the next step's notes, a block before it.
+    void expect(const SynthExpectNote* notes, int count);
     void macroFx(int slot, int macro, uint8_t value);
     void transportStop();     // macro overrides -> page values
     void resetFx();           // pitch FX state of every track (play start)
@@ -262,9 +288,11 @@ private:
     struct Slot {
         SynthSlotRecord rec;
         const SynthPatch* patch = nullptr;
+        const SynthPatch* bound = nullptr;   // patchOf() at the last bind: all of a reload reads this one
         ISynthEngine* eng = nullptr;   // nullptr: silent (unavailable / mismatch / poly 0 still loads)
         int32_t engineId = 0;
         bool mismatch = false;
+        volatile uint8_t preset = 0;   // [OT] Z: 1.. plays that preset, 0 the slot's patch
         SynthParams p;
         // macro state
         uint8_t page[kSynthSeqMacros] = {};
@@ -286,9 +314,10 @@ private:
         // end[] was moved since the last render and start[] already holds
         // the value at the next block start: render must not catch up first.
         bool fresh = false;
-        float gainLin = 0.0f;     // dbToGain(rec.gainDb), 0 at -96 dB
+        float gainLin = 0.0f;     // dbToGain(gain dB of mixOf / rec), 0 at -96 dB
         float mixL = 0.0f, mixR = 0.0f;   // gain x balance
         float mixD = 0.0f, mixE = 0.0f;   // 0.5 x SEND[delay / reverb send]
+        uint8_t baseD = 0, baseE = 0;     // [OT] delay / reverb send 0..100 (mixOf / rec): the base of a Performance send
         float volMin = 0.0f, volMax = 2.0f;   // Volume parameter range
         // mixer ramps
         Ramp gl, gr, sd, sr;
@@ -299,6 +328,31 @@ private:
         SynthSlotScratch scratch;
     };
 
+    // What the slot should play now: one read of `preset`, which the main loop
+    // can zero at any time, and an emptied entry is the slot's own patch.
+    const SynthPatch* patchOf(const Slot& sl) const {
+        const uint8_t z = sl.preset;
+        return z && presets_ && presets_[z - 1].engine ? &presets_[z - 1] : sl.patch;
+    }
+    // [OT] The preset whose mix the slot plays (bound and holding a mix),
+    // else nullptr: the record's (gain, pan, sends).
+    const SynthPatch* mixOf(const Slot& sl) const {
+        return sl.bound && sl.bound != sl.patch && patchHasMix(*sl.bound) ? sl.bound : nullptr;
+    }
+    void applyMix(Slot& sl);
+    // [OT] The polyphony the slot plays: the bound preset's when it carries
+    // one, else the record's (0..8).
+    static int polyOf(const Slot& sl, const SynthSlotRecord& r) {
+        const SynthPatch* b = sl.bound;
+        const uint32_t p = b && b != sl.patch && patchHasPoly(*b) ? b->poly : r.polyphony;
+        return int(p > 8 ? 8 : p);
+    }
+    // [OT] A macro value as the bound sound plays it.
+    static uint8_t shownMacro(const Slot& sl, int k, uint8_t v) {
+        return sl.patch && sl.bound && sl.bound != sl.patch
+                   ? synthMacroOnPreset(v, sl.patch->macros[k].bipolar, sl.bound->macros[k].bipolar)
+                   : v;
+    }
     static int clampSlot(int s) { return s < 0 ? 0 : (s >= kSynthSlots ? kSynthSlots - 1 : s); }
     int cap() const;
     int playable(int s) const;
@@ -327,9 +381,10 @@ private:
     Voice voices_[kSynthMaxVoices];
     Pending pend_[kPending];
     Deferred defer_[kSynthTracks + 1];   // MIDI input tracks never wait
-    int nDefer_ = 0;
-    int startCap_ = kStartsPerBlock;
-    int starts_ = 0;              // voice starts in the current block
+    const SynthPatch* presets_ = nullptr;
+    uint8_t nDefer_ = 0;
+    uint8_t startCap_ = kStartsPerBlock;
+    uint8_t starts_ = 0;          // voice starts in the current block
     bool flushDue_ = false;       // a render ended since the queue was filled
     bool recApplied_[kSynthSlots] = {};   // slots_[s].rec has been applied (sync)
     Slot slots_[kSynthSlots];

@@ -118,9 +118,20 @@ void midiItem(void*, int pos, char* out, int cap) {
 }
 // FX list items carry the column letter, "V - Volume/Velocity" (stock FX
 // picker strings 0xa3160..; docs/STRINGS_DIFF_1.9.3.md item 8).
-void fxItem(void*, int i, char* out, int cap) {
+// On a synth step a-f name the macro they set ("a - M1 Cutoff").
+void fxItem(void* ctx, int i, char* out, int cap) {
     const FxInfo& f = fxInfo(kFxMenuOrder[i]);
-    std::snprintf(out, size_t(cap), "%c - %s", f.symbol, f.name);
+    char m[32];
+    if (ctx && static_cast<const PatternScreen*>(ctx)->fxMacroName(kFxMenuOrder[i], m, sizeof(m)))
+        std::snprintf(out, size_t(cap), "%c - %s", f.symbol, m);
+    else
+        std::snprintf(out, size_t(cap), "%c - %s", f.symbol, f.name);
+}
+const char* fxItemHelp(void* ctx, int i) {
+    const uint8_t type = kFxMenuOrder[i < kFxListCount ? i : 0];
+    char m[32];
+    if (ctx && static_cast<const PatternScreen*>(ctx)->fxMacroName(type, m, sizeof(m))) return fxMacroHelpText(m);
+    return fxHelpText(type);
 }
 
 // Short FX names of the pattern top bar (stock table 0xa7730, 36-byte
@@ -254,6 +265,8 @@ void PatternScreen::start(int opt) {
     recArmPage = false;
     colKey_ = 0;
     pickerKey_ = 0;
+    heldColKey_ = 0;
+    colBefore_ = -1;
     for (auto& v : padVoice_) v = -1;
     chordPads_ = 0;
     if (step >= len()) step = len() - 1;
@@ -270,6 +283,52 @@ void PatternScreen::stop() {
     pickerKey_ = 0;
     focus = -1;
     patternLatch_ = false;
+}
+
+bool PatternScreen::fxMacroName(uint8_t type, char* out, int cap) const {
+    int k;
+    switch (FxId(type)) {
+        case FxId::MidiCcA: k = 0; break;
+        case FxId::MidiCcB: k = 1; break;
+        case FxId::MidiCcC: k = 2; break;
+        case FxId::MidiCcD: k = 3; break;
+        case FxId::MidiCcE: k = 4; break;
+        case FxId::MidiCcF: k = 5; break;
+        default: return false;
+    }
+    // As the sequencer applies them: a MIDI step sends the CC; an FX-only
+    // step without a synth uses the synth of the track's last note (here: the
+    // nearest earlier note in this pattern).
+    const int t = clampi(track, 0, kTrackCount - 1);
+    const Track& tr = app_.pattern().tracks[t];
+    const Step& st = tr.steps[clampi(step, 0, kStepCount - 1)];
+    uint8_t in = st.instrument;
+    if (isMidiInstrument(in)) return false;
+    if (st.note < 0 && !isSynthInstrument(in)) {
+        in = 0xFF;
+        for (int i = clampi(step, 0, kStepCount - 1) - 1; i >= 0; --i)
+            if (tr.steps[i].note >= 0) {
+                in = tr.steps[i].instrument;
+                break;
+            }
+    }
+    const int s = synthSlotOf(in);
+    if (s < 0) return false;
+    // The name as the Synth Macros page shows it (control bytes left out).
+    const char* src = app_.synthTargetPatch(s).macros[k].name;
+    char name[24];
+    int n = 0;
+    for (int i = 0; src[i] && i < int(sizeof(app_.synthTargetPatch(s).macros[k].name)) && n < int(sizeof(name)) - 1; ++i)
+        if (uint8_t(src[i]) >= 0x20 && uint8_t(src[i]) != 0x7f) name[n++] = src[i];
+    while (n > 0 && name[n - 1] == ' ') --n;
+    name[n] = 0;
+    if (n) std::snprintf(out, size_t(cap), "M%d %s", k + 1, name);
+    else std::snprintf(out, size_t(cap), "Macro %d", k + 1);
+    return true;
+}
+
+bool PatternScreen::pickedHere() const {
+    return pickTrack_ == track && pickStep_ == step && pickPattern_ == int(app_.patternNumber());
 }
 
 SelRect PatternScreen::target() const {
@@ -556,8 +615,10 @@ void PatternScreen::onButton(uint8_t id, uint8_t state) {
         // spec 06 §1.6 step 3: only the opening column key stays bound; the
         // FX list (kind 3) also binds F7/F8 to its description window
         // (spec 05 popup binder 0x29a44; spec 16 §B.4).
-        if (id == pickerKey_ && state == kRelease) commitPicker();
-        else if (state == kPress && popupMove(id)) ui_.dirty();
+        if (id == pickerKey_ && state == kRelease) {
+            commitPicker();
+            releaseColKey(id);
+        } else if (state == kPress && popupMove(id)) ui_.dirty();
         else if (pop_.kind() == 0 && btn::isFKey(id)) noteKey(id, state);
         else if (pop_.kind() == 3 && state == kPress && (id == btn::F7 || id == btn::F8))
             pop_.toggleDescription();
@@ -599,14 +660,18 @@ void PatternScreen::onButton(uint8_t id, uint8_t state) {
                 }
             } else {
                 if (colMask && !(colMask & (1u << ck))) colMask = uint8_t(1u << ck);
-                col = ck;
                 if (!ui_.shift()) {
                     colKey_ = id;
                     colKeyAt_ = ui_.now();
+                    heldColKey_ = id;
+                    colBefore_ = int8_t(col);
+                    colKeyUsed_ = false;
                 }
+                col = ck;
             }
         } else if (state == kRelease) {
             if (colKey_ == id) colKey_ = 0;
+            releaseColKey(id);
         }
         keepTrackVisible();
         refreshBar();
@@ -690,13 +755,19 @@ void PatternScreen::onButton(uint8_t id, uint8_t state) {
                 const SelRect t = target();
                 const SelRect& src = a.clipRect();
                 const ColMode m = heldColMode(false);
-                pops::paste(a.pattern(), a.clipboard(), src, t.s0, t.t0, m, a.currentInstrument());
+                // Copied on one FX column, pasted on the other: only that FX crosses over.
+                const int from = a.clipColumn();
+                if ((from == 2 || from == 3) && (col == 2 || col == 3) && from != col &&
+                    (m == ColMode::All || m == ColMode::Fx1 || m == ColMode::Fx2))
+                    pops::pasteFxColumn(a.pattern(), a.clipboard(), src, t.s0, t.t0, from - 2, col - 2);
+                else
+                    pops::paste(a.pattern(), a.clipboard(), src, t.s0, t.t0, m, a.currentInstrument());
                 a.patternEdited();
                 step = t.s0;
                 track = t.t0;
                 if (m != ColMode::Pattern) advance(src.rows() - 1);
             } else {
-                a.copyToClipboard(target());
+                a.copyToClipboard(target(), col);
                 ui_.notify("Copied");
             }
             break;
@@ -1145,7 +1216,11 @@ void PatternScreen::editEncoder(int d) {
         if (typeMode) {
             pops::stepFxType(a.pattern(), r, col, d);
             const StepFx& f = a.pattern().tracks[r.t0].steps[r.s0].fx[fxSlotForColumn(col)];
-            a.project.setU8(pf::kLastFxType, uint8_t(pops::fxOrderIndex(f.type)));
+            const int order = pops::fxOrderIndex(fxLogicalType(f.type, f.value));
+            // kLastFxType is a menu index stock firmware reads. Z and MIDI CC G..Z
+            // sit past that list, so only a stock entry (ids 0..42) is stored.
+            if (kFxMenuOrder[order] <= uint8_t(FxId::SlideDown))
+                a.project.setU8(pf::kLastFxType, uint8_t(order));
         } else {
             pops::stepFxValue(a.pattern(), r, col, d);
         }
@@ -1201,6 +1276,7 @@ void PatternScreen::onPad(uint8_t pad, uint8_t state) {
     // A pad pressed while a column key is held is the key + pad entry: the
     // key no longer opens its hold popup, so its release writes nothing more.
     colKey_ = 0;
+    if (heldColKey_) colKeyUsed_ = true;
     // Hold focus: pads pick values (spec 06 §1.6).
     if (focus == 0) {
         focusUsed_ = true;
@@ -1301,11 +1377,13 @@ void PatternScreen::writeFxPad(const SelRect& r, int pad) {
     App& a = app_;
     const int slot = fxSlotForColumn(col);
     if (ui_.isDown(col == 2 ? btn::Fx1 : btn::Fx2)) {
-        const uint8_t type = kFxMenuOrder[pad < kFxCount ? pad : kFxCount - 1];
-        pops::writeFxType(a.pattern(), r, col, type);
-        a.project.setU8(pf::kLastFxType, uint8_t(pad < kFxCount ? pad : kFxCount - 1));
+        const int order = pad < kFxListCount ? pad : kFxListCount - 1;
+        pops::writeFxType(a.pattern(), r, col, kFxMenuOrder[order]);
+        if (kFxMenuOrder[order] <= uint8_t(FxId::SlideDown))
+            a.project.setU8(pf::kLastFxType, uint8_t(order));   // stock firmware reads this index
     } else {
-        const uint8_t type = a.pattern().tracks[r.t0].steps[r.s0].fx[slot].type;
+        const StepFx& cur = a.pattern().tracks[r.t0].steps[r.s0].fx[slot];
+        const uint8_t type = fxLogicalType(cur.type, cur.value);
         pops::writeFxValue(a.pattern(), r, col, pops::fxValueFromPad(type, pad));
     }
 }
@@ -1317,6 +1395,7 @@ void PatternScreen::openPicker(int which) {
     App& a = app_;
     pickerKey_ = colKey_;
     colKey_ = 0;
+    if (heldColKey_) colKeyUsed_ = true;
     const Step& st = a.pattern().tracks[track].steps[step];
     if (which == 0) {
         const int n = st.note >= 0 ? st.note : lastNote();
@@ -1340,8 +1419,8 @@ void PatternScreen::openPicker(int which) {
         }
     } else {
         const int slot = fxSlotForColumn(which);
-        pop_.open(3, "FX", kFxCount, pops::fxOrderIndex(st.fx[slot].type), fxItem, nullptr);
-        pop_.setDescription([](void*, int i) { return fxHelpText(kFxMenuOrder[i < kFxCount ? i : 0]); });
+        pop_.open(3, "FX", kFxListCount, pops::fxOrderIndex(fxLogicalType(st.fx[slot].type, st.fx[slot].value)), fxItem, this);
+        pop_.setDescription(fxItemHelp);
     }
     // Stock popup header band over the title bar (Ui; Part 2 §7.2).
     ui_.openPopupHeader(which == 0 ? "Notes" : (which == 1 ? "Instruments" : "Fx"),
@@ -1395,6 +1474,19 @@ void PatternScreen::noteKeysOff() {
     noteKeysOn_ = 0;
 }
 
+// Issue #186: a column key used as a modifier goes back to the column it
+// came from (a tap alone stays on its column).
+void PatternScreen::releaseColKey(uint8_t id) {
+    if (id != heldColKey_) return;
+    if (colKeyUsed_ && colBefore_ >= 0) {
+        col = colBefore_;
+        keepTrackVisible();
+    }
+    heldColKey_ = 0;
+    colBefore_ = -1;
+    colKeyUsed_ = false;
+}
+
 void PatternScreen::commitPicker() {
     App& a = app_;
     noteKeysOff();
@@ -1407,6 +1499,9 @@ void PatternScreen::commitPicker() {
     if (kind == 2 || kind == 5) {
         const int ins = kind == 5 ? synthui::popupInstrumentMidi(v) : synthui::popupInstrument(v);
         a.setCurrentInstrument(ins);
+        pickTrack_ = track;
+        pickStep_ = step;
+        pickPattern_ = a.patternNumber();
         if (edit()) {
             a.pushUndo();
             pops::writeInstrument(a.pattern(), target(), uint8_t(ins));
@@ -1424,7 +1519,8 @@ void PatternScreen::commitPicker() {
             a.patternEdited();
         }
     } else if (kind == 3) {
-        a.project.setU8(pf::kLastFxType, uint8_t(v));
+        if (v >= 0 && v < kFxListCount && kFxMenuOrder[v] <= uint8_t(FxId::SlideDown))
+            a.project.setU8(pf::kLastFxType, uint8_t(v));   // stock firmware reads this index
         a.markProjectDirty();
         if (edit()) {
             SelRect r;
@@ -1725,15 +1821,16 @@ void PatternScreen::padLeds(uint8_t* lv) {
         } else {
             const StepFx& f = st.fx[fxSlotForColumn(col)];
             if (ui_.isDown(col == 2 ? btn::Fx1 : btn::Fx2)) {
-                const int i = pops::fxOrderIndex(f.type);
+                const int i = pops::fxOrderIndex(fxLogicalType(f.type, f.value));
                 if (i < 48) lv[i] = full;
             } else {
                 // The first pad that enters the current value.
+                const uint8_t ft = fxLogicalType(f.type, f.value), fv = fxLogicalValue(f.type, f.value);
                 int lit = -1;
                 for (int p = 0; p < 48 && lit < 0; ++p)
-                    if (pops::fxValueFromPad(f.type, p) == f.value) lit = p;
-                const int lo = seq::fxMin(f.type), hi = seq::fxMax(f.type);
-                if (lit < 0 && hi > lo) lit = clampi((f.value - lo) * 47 / (hi - lo), 0, 47);
+                    if (pops::fxValueFromPad(ft, p) == fv) lit = p;
+                const int lo = seq::fxMin(ft), hi = seq::fxMax(ft);
+                if (lit < 0 && hi > lo) lit = clampi((fv - lo) * 47 / (hi - lo), 0, 47);
                 if (lit >= 0) lv[lit] = full;
             }
         }
@@ -1886,7 +1983,7 @@ void PatternScreen::drawGridHorizontal(Gfx& g) {
                 }
                 const bool empty = c == 0 ? st.note == kNoteEmpty
                                  : c == 1 ? st.note == kNoteEmpty
-                                          : st.fx[c - 2].type == 0;
+                                          : !st.fx[c - 2].used();
                 const int chars = c == 0 ? 3 : (c == 1 ? 2 : kFxCellChars);
                 if (empty && !cur) {
                     if (nEmpty < kMaxEmpty) {
@@ -2040,7 +2137,8 @@ void PatternScreen::drawTitleBar(Gfx& g, bool popupRight) {
             std::snprintf(sub, sizeof(sub), "%d. MIDI Channel %d", ci + 1, ci - kFirstMidiInstrument + 1);
     } else {
         const StepFx& f = a.pattern().tracks[track].steps[step].fx[fxSlotForColumn(col)];
-        std::snprintf(sub, sizeof(sub), "%s", fxShortName(f.type));
+        const uint8_t type = fxLogicalType(f.type, f.value);
+        if (!fxMacroName(type, sub, sizeof(sub))) std::snprintf(sub, sizeof(sub), "%s", fxShortName(type));
     }
     // spec 06 §1.2, spec 20 §1.6: while the sequencer waits for a recording
     // to start (external clock, count-in) "REC" blinks with a 500 ms period

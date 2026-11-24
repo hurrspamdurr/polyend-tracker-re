@@ -59,7 +59,7 @@ uint16_t chordMask(uint8_t value) {
 namespace {
 // spec 03 §3.6 Range column, index = FX id.
 struct Range { uint8_t lo, hi; };
-const Range kRanges[kFxCount] = {
+const Range kRanges[kFxListCount] = {
     {0, 100},  // 0 None
     {0, 0},    // 1 Off
     {0, 100},  // 2 Micro-move
@@ -102,11 +102,12 @@ const Range kRanges[kFxCount] = {
     {0, 127}, {0, 127}, {0, 127},                     // 53..55 CC Q..S
     {0, 127}, {0, 127}, {0, 127}, {0, 127},           // 56..59 CC T..W
     {0, 127}, {0, 127}, {0, 127},                     // 60..62 CC X..Z
+    {0, 8},    // 63 Synth preset (list only)
 };
 }  // namespace
 
-uint8_t fxMin(uint8_t type) { return type < kFxCount ? kRanges[type].lo : 0; }
-uint8_t fxMax(uint8_t type) { return type < kFxCount ? kRanges[type].hi : 255; }
+uint8_t fxMin(uint8_t type) { return type < kFxListCount ? kRanges[type].lo : 0; }
+uint8_t fxMax(uint8_t type) { return type < kFxListCount ? kRanges[type].hi : 255; }
 
 }  // namespace seq
 }  // namespace ot

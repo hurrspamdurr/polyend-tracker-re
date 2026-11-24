@@ -20,8 +20,55 @@ graphics, and is not affiliated with or endorsed by Polyend.
 
 2.x brings the newer Tracker Mini features to the original hardware: 16 tracks, synth
 engines, stereo samples, Mini-compatible project files and USB Storage mode. These notes cover
-the whole 2.x line (2.0 to 2.2.5); the full list is in the release notes of the
-[2.2.5 download](https://github.com/sandlbn/polyend-tracker-re/releases/tag/2.2.5).
+the whole 2.x line (2.0 to 2.2.8); the full list is in the release notes of the
+[2.2.8 download](https://github.com/sandlbn/polyend-tracker-re/releases/tag/2.2.8).
+
+## New in 2.2.8
+
+- **Long instruments open faster** (issue #184): with Stream from card on, Open streams a long
+  instrument straight from the project's own file instead of copying it into the Workspace
+  first; the copy is made later, while nothing plays. Header edits made meanwhile are kept.
+- **Play / Stop in the file browsers** (issue #187): Play works with the Open or Save browser
+  or the Import Mod list open, and an open browser stays in its folder across screens.
+- **Pattern, held column key** (issue #186): holding Instr, Note, FX1 or FX2 while you press a
+  pad or open its popup goes back to the column you were on when you let go.
+- **Instrument picks stand:** an instrument picked in the Instruments list is the one
+  Instrument Params, Sample Playback and Sample Editor open, until the cursor moves.
+- **FX a-f on a synth step** are named as the macros they set ("a - M1 Cutoff") in the FX
+  list and the top bar, instead of "MIDI CC A".
+- **Presets and macros:** a Z to a preset plays its macros at that preset's neutral values;
+  before, a unipolar macro could turn a preset almost silent.
+- **Synth CPU:** the voices a step takes over fade out a block before the step instead of in
+  the same block, so a heavy synth step (a pattern start replacing all its notes) no longer
+  renders twice in one block and shows "!" on the CPU meter.
+
+## New in 2.2.7
+
+- **Synth presets and the Z FX:** eight presets per project, shared by the three synth slots.
+  Each holds a patch of any model with its gain, pan, sends, polyphony and name. Z1-Z8 in a
+  pattern switch a slot to a preset, Z0 back to its own patch.
+- **The song sounds the same wherever you start:** Play from the middle starts each slot on
+  the right preset, and pads and MIDI play what the song plays at the cursor while stopped.
+- **Edit what you hear:** while a slot plays a preset, the synth pages and the Global Mixer
+  column show and edit that preset.
+- **New sample filter:** flat passbands, exact tuning and rounded loud peaks. Existing songs
+  that use the filter sound slightly different.
+- **Sample Playback:** with Snap to zero off, a marker turns green on a zero crossing in
+  the frames its position covers.
+- **Fixes:** Instrument Params on a synth step follows the sample rule; a copied FX column
+  pastes into the other FX column; Stop cancels a queued pattern; the Synth Macros number
+  follows an FX.
+
+## New in 2.2.6
+
+- **Pattern pads with one finger** (issue #153): a short tap of F1 keeps the pads on patterns
+  until you tap it again or press another screen button.
+- **Resample, Place on:** tracks without notes are green, tracks with notes red; From and
+  Place on list tracks by name.
+- **Radio stereo:** Config > General > Radio stereo = On makes the built-in radio stereo.
+  Off, the default, keeps it mono as on stock.
+- **WAV import:** 32-bit float files that peak past full scale are clipped instead of
+  wrapping into noise.
 
 ## New in 2.2.5
 
@@ -160,7 +207,7 @@ the whole 2.x line (2.0 to 2.2.5); the full list is in the release notes of the
 
 ## Install
 
-1. Copy `PolyendTrackerOTv225.ptf` to `/Firmware` on the SD card. Keep the name; the
+1. Copy `PolyendTrackerOTv228.ptf` to `/Firmware` on the SD card. Keep the name; the
    bootloader only accepts 24-character names.
 2. Go to **Config > Firmware update**, select it and confirm. If the screen stays dark
    after the update, press the power button once.
@@ -212,4 +259,4 @@ and an IDM track using three engines at once) and seven BLAST GRID synth remixes
 (Title, World 1, World 4, Battle, Battle FM, Boss, Final Boss). Copy them to `/Projects` on
 the card.
 
-Downloads: https://github.com/sandlbn/polyend-tracker-re/releases (latest: [2.2.5](https://github.com/sandlbn/polyend-tracker-re/releases/tag/2.2.5))
+Downloads: https://github.com/sandlbn/polyend-tracker-re/releases (latest: [2.2.8](https://github.com/sandlbn/polyend-tracker-re/releases/tag/2.2.8))

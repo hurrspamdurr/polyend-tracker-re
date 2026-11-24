@@ -4,7 +4,7 @@
 namespace ot {
 
 namespace {
-const FxInfo kFxTable[kFxCount] = {
+const FxInfo kFxTable[kFxListCount] = {
     {'-', "None", 0, 100, 0},
     {'!', "Off", 0, 0, 0},
     {'m', "Micro-move", 0, 100, 0},
@@ -49,6 +49,7 @@ const FxInfo kFxTable[kFxCount] = {
     {'F', "Slide Up", 0, 255, 0},
     {'J', "Slide Down", 0, 255, 0},
     // [I] Grid letters stock FX does not already use. The menu name is the CC letter.
+    // 'Z' is the synth preset command, so MIDI CC R uses '/'.
     {'u', "MIDI CC G", 0, 127, 0},
     {'w', "MIDI CC H", 0, 127, 0},
     {'y', "MIDI CC I", 0, 127, 0},
@@ -60,7 +61,7 @@ const FxInfo kFxTable[kFxCount] = {
     {'O', "MIDI CC O", 0, 127, 0},
     {'X', "MIDI CC P", 0, 127, 0},
     {'Y', "MIDI CC Q", 0, 127, 0},
-    {'Z', "MIDI CC R", 0, 127, 0},
+    {'/', "MIDI CC R", 0, 127, 0},
     {'o', "MIDI CC S", 0, 127, 0},
     // A..Z letters are already stock symbols or G..S. The menu name is the letter.
     {'#', "MIDI CC T", 0, 127, 0},
@@ -70,15 +71,17 @@ const FxInfo kFxTable[kFxCount] = {
     {'*', "MIDI CC X", 0, 127, 0},
     {'+', "MIDI CC Y", 0, 127, 0},
     {'=', "MIDI CC Z", 0, 127, 0},
+    {'Z', "Synth Preset", 0, 8, 0},
 };
 }  // namespace
 
-const uint8_t kFxMenuOrder[kFxCount] = {
+const uint8_t kFxMenuOrder[kFxListCount] = {
     0, 1, 18, 31, 34, 19, 15, 17, 2, 20, 4, 3, 21, 5, 6, 16, 7, 26, 22, 25, 23, 24,
-    35, 36, 33, 38, 27, 29, 28, 30, 32, 39, 40, 41, 42, 8, 9, 10, 11, 12, 37,
-    43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 14, 13,
+    35, 36, 33, 38, 27, 29, 28, 30, 32, 39, 40, 41, 42, 8, 9, 10, 11, 12, 37, 14, 13,
+    kFxSynthPreset,
+    43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62,
 };
 
-const FxInfo& fxInfo(uint8_t id) { return kFxTable[id < kFxCount ? id : 0]; }
+const FxInfo& fxInfo(uint8_t id) { return kFxTable[id < kFxListCount ? id : 0]; }
 
 }  // namespace ot
