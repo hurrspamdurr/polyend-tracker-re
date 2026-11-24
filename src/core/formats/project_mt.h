@@ -25,6 +25,13 @@ struct ProjectLoadInfo {
 // Serialise exactly as fw 1.9.2 does (spec 02 §3.1 "Save").
 void encodeProject(const Project& p, uint8_t out[mt::kFileSize]);
 
+// [I] Side record for MIDI CC G..S (project.otcc, next to project.mt).
+// "OTCC", version 1, 16*13 payload, 8-bit sum of the payload. A missing or
+// bad record leaves the defaults from resetMidiCcExt.
+constexpr uint32_t kMidiCcSideSize = 4 + 1 + uint32_t(kMidiInstrumentCount) * uint32_t(Project::kMidiCcExt) + 1;
+void encodeMidiCcSide(const Project& p, uint8_t out[kMidiCcSideSize]);
+bool decodeMidiCcSide(const uint8_t* in, uint32_t len, Project& p);
+
 // Load per spec 02 §3.1 "Load algorithm" as corrected by spec 10 §0.2:
 // `file`/`len` is whatever was read from disk; bytes past `len` read as 0.
 // Structure 1..16 runs the spec 10 §1.2 chain to 17. Returns WrongType if

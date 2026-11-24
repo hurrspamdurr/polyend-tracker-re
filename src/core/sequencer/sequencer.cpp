@@ -31,6 +31,9 @@ bool consumedBySequencer(uint8_t type) {
         case 0: case 1: case 2: case 3: case 4: case 5: case 6:
         case 8: case 9: case 10: case 11: case 12: case 13: case 14: case 15: case 16: case 17:
         case 20: case 21: case 37:
+        case 43: case 44: case 45: case 46: case 47:
+        case 48: case 49: case 50: case 51: case 52:
+        case 53: case 54: case 55:
             return true;
         default:
             return false;
@@ -40,6 +43,7 @@ bool consumedBySequencer(uint8_t type) {
 int ccLetter(uint8_t type) {
     if (type >= 8 && type <= 12) return type - 8;
     if (type == 37) return 5;
+    if (type >= 43 && type <= 55) return 6 + (type - 43);   // G..S -> 6..18
     return -1;
 }
 
@@ -581,16 +585,21 @@ void Sequencer::stepStart(int t) {
                 if (p.rec.note >= 0) p.rec.volume = int8_t(rng_.rangeIncl(0, v > 100 ? 100 : v));
                 break;
             case 8: case 9: case 10: case 11: case 12: case 37:
+            case 43: case 44: case 45: case 46: case 47:
+            case 48: case 49: case 50: case 51: case 52:
+            case 53: case 54: case 55: {
+                const int letter = ccLetter(type);
                 if (isMidiInstr(p.rec.instr)) {
-                    sendCcFx(t, uint8_t(ccLetter(type)), v, p.rec);
-                } else if (sink_) {
+                    sendCcFx(t, uint8_t(letter), v, p.rec);
+                } else if (sink_ && letter >= 0 && letter < 6) {
                     // Synth step: macro 1..6 of the slot (Mini manual 7.38). An
                     // FX-only step uses the synth the track plays.
                     uint8_t in = p.rec.instr;
                     if (!isSynth(in) && p.rec.note < 0 && isSynth(tr.last.instr)) in = tr.last.instr;
-                    if (isSynth(in)) sink_->synthMacroFx(uint8_t(synthSlotOf(in)), uint8_t(ccLetter(type)), v > 127 ? 127 : v);
+                    if (isSynth(in)) sink_->synthMacroFx(uint8_t(synthSlotOf(in)), uint8_t(letter), v > 127 ? 127 : v);
                 }
                 break;
+            }
             case 13:  // Break
                 breakPending_ = true;
                 break;
@@ -1327,8 +1336,9 @@ uint8_t Sequencer::midiNoteNumber(int note) const {
 }
 
 void Sequencer::sendCcFx(int t, uint8_t letter, uint8_t value, const NoteRec& rec) {
+    if (letter >= MidiInstrument::kCcCount) return;
     const MidiInstrument mi = midiInstr(rec.instr);
-    const uint8_t cc = mi.cc[letter < 6 ? letter : 0];
+    const uint8_t cc = mi.cc[letter];
     const uint8_t ch = uint8_t(rec.instr - 48);  // status nibble = channel - 1
     const uint8_t v = value > 127 ? 127 : value;
     if (cc <= 127) {

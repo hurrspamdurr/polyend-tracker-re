@@ -80,6 +80,19 @@ const char* const kDescription[kFxCount] = {
     "Transposes the note in semitones.",   // 40 Tune
     "Slides the pitch up by value/16 semitones over one step (16 = 1 semitone), then holds.",   // 41 Slide Up (manual p.178)
     "Slides the pitch down by value/16 semitones over one step (16 = 1 semitone), then holds.",   // 42 Slide Down (manual p.179)
+    "Sends the MIDI instrument's CC G with this value.",   // 43
+    "Sends the MIDI instrument's CC H with this value.",   // 44
+    "Sends the MIDI instrument's CC I with this value.",   // 45
+    "Sends the MIDI instrument's CC J with this value.",   // 46
+    "Sends the MIDI instrument's CC K with this value.",   // 47
+    "Sends the MIDI instrument's CC L with this value.",   // 48
+    "Sends the MIDI instrument's CC M with this value.",   // 49
+    "Sends the MIDI instrument's CC N with this value.",   // 50
+    "Sends the MIDI instrument's CC O with this value.",   // 51
+    "Sends the MIDI instrument's CC P with this value.",   // 52
+    "Sends the MIDI instrument's CC Q with this value.",   // 53
+    "Sends the MIDI instrument's CC R with this value.",   // 54
+    "Sends the MIDI instrument's CC S with this value.",   // 55
 };
 }  // namespace
 

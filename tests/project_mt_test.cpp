@@ -162,7 +162,7 @@ TEST(sanitiser) {
     encodeProject(p, g_buf);
     g_buf[0x110] = 0xF0;        // <0 -> 48
     g_buf[0x111] = 64;          // >63 -> 0
-    g_buf[0x113] = 50;          // >49 -> 0
+    g_buf[0x113] = 60;          // above the FX menu (0..55) -> 0
     g_buf[0x12C + 3] = 2;       // >1 -> 0
     g_buf[0x134] = 4;           // >3 -> 0 (1.9.2 rule; recorder source 0..3)
     wrU16(g_buf + 0x142, 0);    // not 1..255 -> 1
@@ -492,4 +492,31 @@ TEST(mini_values_block_raw_round_trip) {
     CHECK(decodeProject(g_buf, sizeof(g_buf), q) == FmtStatus::Ok);
     encodeProject(q, g_buf2);
     CHECK(std::memcmp(g_buf + 0x10, g_buf2 + 0x10, 0x800) == 0);
+}
+
+TEST(midi_cc_gs_stay_out_of_the_stock_record) {
+    static Project p;
+    MidiInstrument m = p.midiInstrument(3);
+    m.extra[0] = 12;
+    m.cc[6] = 80;
+    m.cc[16] = 99;
+    m.cc[18] = 21;
+    p.setMidiInstrument(3, m);
+    encodeProject(p, g_buf);
+    CHECK_BYTES(g_buf + 0x4FD + 3 * 16, 3, 127, 1, 5, 7, 11, 64, 128, 12, 0, 0, 0, 0, 0, 0, 0);
+    for (uint32_t o = 0x643; o < 0x74C; ++o) CHECK_EQ(g_buf[o], 0);
+    uint8_t side[kMidiCcSideSize];
+    encodeMidiCcSide(p, side);
+    static Project q;
+    CHECK(decodeProject(g_buf, sizeof(g_buf), q) == FmtStatus::Ok);
+    CHECK_EQ(q.midiInstrument(3).extra[0], 12);
+    CHECK_EQ(q.midiInstrument(3).cc[6], 74);
+    CHECK_EQ(q.midiInstrument(3).cc[16], 18);
+    CHECK(decodeMidiCcSide(side, sizeof(side), q));
+    CHECK_EQ(q.midiInstrument(3).cc[6], 80);
+    CHECK_EQ(q.midiInstrument(3).cc[16], 99);
+    CHECK_EQ(q.midiInstrument(3).cc[18], 21);
+    CHECK_EQ(q.midiInstrument(3).extra[0], 12);
+    side[5] ^= 0xFF;
+    CHECK(!decodeMidiCcSide(side, sizeof(side), q));
 }

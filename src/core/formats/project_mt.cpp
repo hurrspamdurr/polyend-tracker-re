@@ -7,6 +7,7 @@
 #include "formats/bytes.h"
 #include "formats/crc32.h"
 #include "formats/legacy_upgrade.h"
+#include "model/fx.h"
 
 namespace ot {
 
@@ -92,6 +93,7 @@ FmtStatus decodeProject(const uint8_t* file, size_t len, Project& p, ProjectLoad
     std::memcpy(p.playlist, buf + mt::kSongOff, kSongSlots);
     p.playlistPos = buf[mt::kSongOff + kSongSlots];
     std::memcpy(p.values, buf + mt::kValuesOff, mt::kValuesSize);
+    p.resetMidiCcExt();   // [I] G..S are not in the stock image
     li.synthSlotsReset = sanitizeProject(p, trackIndexLimit);
 
     if (info) *info = li;
@@ -102,7 +104,9 @@ uint8_t sanitizeProject(Project& p, uint8_t trackIndexLimit) {
     // spec 02 §3.3 "Validation on load" column.
     if (int8_t(p.u8(0x110)) < 0) p.setU8(0x110, 48);
     if (p.u8(0x111) > 63) p.setU8(0x111, 0);
-    if (p.u8(0x113) > 49) p.setU8(0x113, 0);
+    // Stock resets a last-FX menu index above 49. [I] CC G..S ids sit above
+    // that, so a stored index is kept when it is a real FX id.
+    if (p.u8(0x113) > 49 && !fxIdValid(p.u8(0x113))) p.setU8(0x113, 0);
     for (uint32_t i = 0; i < 8; ++i)
         if (p.u8(mt::kTrackBool8 + i) > 1) p.setU8(mt::kTrackBool8 + i, 0);
     // 0x134 = Sample Recorder source (spec 05 appendix C §2.1/§2.4: 0 line in,
@@ -164,6 +168,34 @@ uint8_t sanitizeSynthSlots(Project& p, const uint8_t* bipolarMask) {
         reset = uint8_t(reset | (1u << s));
     }
     return reset;
+}
+
+void encodeMidiCcSide(const Project& p, uint8_t out[kMidiCcSideSize]) {
+    out[0] = 'O';
+    out[1] = 'T';
+    out[2] = 'C';
+    out[3] = 'C';
+    out[4] = 1;
+    std::memcpy(out + 5, p.midiCcExt, sizeof(p.midiCcExt));
+    uint8_t sum = 0;
+    for (uint32_t i = 0; i < sizeof(p.midiCcExt); ++i) sum = uint8_t(sum + out[5 + i]);
+    out[5 + sizeof(p.midiCcExt)] = sum;
+}
+
+bool decodeMidiCcSide(const uint8_t* in, uint32_t len, Project& p) {
+    if (!in || len < kMidiCcSideSize) return false;
+    if (in[0] != 'O' || in[1] != 'T' || in[2] != 'C' || in[3] != 'C' || in[4] != 1) return false;
+    uint8_t sum = 0;
+    for (uint32_t i = 0; i < sizeof(p.midiCcExt); ++i) sum = uint8_t(sum + in[5 + i]);
+    if (sum != in[5 + sizeof(p.midiCcExt)]) return false;
+    const MidiInstrument def;
+    for (int i = 0; i < kMidiInstrumentCount; ++i) {
+        for (int c = 0; c < Project::kMidiCcExt; ++c) {
+            const uint8_t v = in[5 + i * Project::kMidiCcExt + c];
+            p.midiCcExt[i][c] = v > 130 ? def.cc[6 + c] : v;
+        }
+    }
+    return true;
 }
 
 }  // namespace ot

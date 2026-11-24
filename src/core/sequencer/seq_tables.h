@@ -42,7 +42,7 @@ extern const uint8_t kChordSize[kChordCount];
 uint16_t chordMask(uint8_t value);
 
 // Engine-enforced FX value ranges (spec 03 §3.6 "Range"; differs from
-// tracker-lib for several ids). Ids >= 43 return 0..255.
+// tracker-lib for several ids). Ids >= kFxCount return 0..255.
 uint8_t fxMin(uint8_t type);
 uint8_t fxMax(uint8_t type);
 
