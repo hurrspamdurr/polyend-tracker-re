@@ -214,16 +214,220 @@ bool applyPlaybackCc(Instrument& in, uint32_t len, uint8_t cc, uint8_t value) {
     return false;
 }
 
+// Novation DrumStation controller map (manual p.42). Index 0 is CC 20.
+// 808 is 20..75, 909 is 76..119. The instrument is capitals, the function
+// is small letters: BD bass, SD snare, LT/MT/HT toms, RS rim, CP clap,
+// CB cowbell, CH closed hat, OH open hat, CY crash, RD ride, LC/MC/HC
+// congas, MA maracas, CL claves; cut front cut, pan, dst distortion,
+// tun tune, ton tone, dcy decay, snp snappy, atk attack.
+// The printed page is two columns. Clap tune is 100, closed-hat
+// distortion/tune/decay are 101..103, open-hat tune is 104, open-hat
+// decay is 113.
+const char* const kDrumCc[100] = {
+    "BDcut", "BDpan", "BDdst", "BDtun", "BDton", "BDdcy", "SDcut", "SDpan", "SDdst", "SDtun",  // 20..29 808
+    "SDton", "SDsnp", "LTcut", "LTpan", "LTdst", "LTtun", "LTdcy", "MTcut", "MTpan", "MTdst",  // 30..39
+    "MTtun", "MTdcy", "HTcut", "HTpan", "HTdst", "HTtun", "HTdcy", "RSpan", "RStun", "CPpan",  // 40..49
+    "CPtun", "CBpan", "CBdst", "CBtun", "CHpan", "CHtun", "CHdcy", "OHpan", "OHtun", "OHdcy",  // 50..59
+    "CYpan", "CYton", "CYdcy", "LCpan", "LCdst", "LCtun", "MCpan", "MCdst", "MCtun", "HCpan",  // 60..69
+    "HCdst", "HCtun", "MApan", "MAtun", "CLpan", "CLtun",                                        // 70..75
+    "BDtun", "BDatk", "BDdcy", "SDtun",                                                            // 76..79 909
+    "SDton", "SDsnp", "LTcut", "LTpan", "LTdst", "LTtun", "LTdcy", "MTcut", "MTpan", "MTdst",  // 80..89
+    "MTtun", "MTdcy", "HTcut", "HTpan", "HTdst", "HTtun", "HTdcy", "RSpan", "RStun", "CPpan",  // 90..99
+    "CPtun", "CHdst", "CHtun", "CHdcy", "OHtun", "BDcut", "BDpan", "BDdst", "SDcut", "SDpan",  // 100..109
+    "SDdst", "CHpan", "OHpan", "OHdcy", "CYpan", "CYtun", "CYdcy", "RDpan", "RDtun", "RDdcy",  // 110..119
+};
+
+// DSI Tetra manual v1.3, "Additional Continuous Controllers". Empty means the
+// Tetra has no CC there, so the row stays a bare number.
+const char* tetraRole(int v) {
+    switch (v) {
+        case 14: return "TMpo";    // tempo
+        case 15: return "TMsig";   // time signature
+        case 20: return "O1frq";   // osc 1 frequency
+        case 21: return "O1fin";
+        case 22: return "O1shp";
+        case 23: return "O1gld";
+        case 24: return "O2frq";
+        case 25: return "O2fin";
+        case 26: return "O2shp";
+        case 27: return "O2gld";
+        case 28: return "OSmix";
+        case 29: return "NOlvl";
+        case 30: return "S1lvl";   // sub osc 1
+        case 31: return "S2lvl";
+        case 52: return "FBvol";   // feedback volume
+        case 53: return "FBgan";
+        case 75: return "VCsus";
+        case 76: return "VCrel";
+        case 77: return "E3sus";
+        case 78: return "E3rel";
+        case 85: return "E3dst";
+        case 86: return "E3amt";
+        case 87: return "E3vel";
+        case 88: return "E3dly";
+        case 89: return "E3atk";
+        case 90: return "E3dcy";
+        case 102: return "FLfrq";
+        case 103: return "FLres";
+        case 104: return "FLkey";
+        case 105: return "FLaud";  // filter audio mod
+        case 106: return "FLamt";
+        case 107: return "FLvel";
+        case 108: return "FLdly";
+        case 109: return "FLatk";
+        case 110: return "FLdcy";
+        case 111: return "FLsus";
+        case 112: return "FLrel";
+        case 113: return "VClvl";
+        case 114: return "VCpan";
+        case 115: return "VCamt";
+        case 116: return "VCvel";
+        case 117: return "VCdly";
+        case 118: return "VCatk";
+        case 119: return "VCdcy";
+        default: return nullptr;
+    }
+}
+
+// Novation A-Station user guide, MIDI Controller List. A few numbers are
+// packed (one CC holds several switches): 65, 67, 70, 71, 78, 79 and 89.
+const char* aStationRole(int v) {
+    switch (v) {
+        case 1: return "MDwhl";
+        case 2: return "BRth";
+        case 3: return "ARpat";    // arp pattern
+        case 5: return "PRtim";    // portamento time
+        case 6: return "NRval";    // NRPN data
+        case 7: return "VOlum";
+        case 8: return "PRgld";    // preglide
+        case 9: return "ARrat";
+        case 10: return "PNpos";
+        case 12: return "PNrat";   // non-sync pan rate
+        case 13: return "PNsyn";
+        case 14: return "VOwid";   // vocoder stereo width
+        case 15: return "VOsib";
+        case 16: return "MDdst";   // mod wheel distortion
+        case 17: return "DScmp";
+        case 18: return "MDdly";
+        case 19: return "DLtim";
+        case 20: return "DLsyn";
+        case 21: return "DLfbk";
+        case 22: return "DLwid";
+        case 23: return "DLrat";
+        case 24: return "MDrev";
+        case 25: return "RVdcy";
+        case 26: return "MDcho";
+        case 27: return "CHrat";
+        case 28: return "CHsyn";
+        case 29: return "CHfbk";
+        case 30: return "CHdep";
+        case 31: return "CHctr";
+        case 32: return "BAnk";
+        case 33: return "EQlvl";
+        case 34: return "EQfrq";
+        case 35: return "EQrat";
+        case 36: return "EQsyn";
+        case 37: return "EQdep";
+        case 40: return "O1sem";
+        case 41: return "O1cnt";
+        case 42: return "O1bnd";
+        case 43: return "O1lfo";
+        case 44: return "O1env";
+        case 45: return "O1pw";
+        case 46: return "O1lpw";
+        case 47: return "O1epw";
+        case 48: return "O2sem";
+        case 49: return "O2cnt";
+        case 50: return "O2bnd";
+        case 51: return "O2lfo";
+        case 52: return "O2env";
+        case 53: return "O2pw";
+        case 54: return "O2lpw";
+        case 55: return "O2epw";
+        case 56: return "O3sem";
+        case 57: return "O3cnt";
+        case 58: return "O3bnd";
+        case 59: return "O3lfo";
+        case 60: return "O3env";
+        case 61: return "O3pw";
+        case 62: return "O3lpw";
+        case 63: return "O3epw";
+        case 64: return "SUst";
+        case 65: return "ENmod";   // packed: envelope modes / osc keysync
+        case 67: return "UNtyp";   // packed: unison / voice / filter type
+        case 68: return "UNdet";
+        case 69: return "OSran";
+        case 70: return "OSwav";   // packed: waveform / portamento mode
+        case 71: return "OSoct";   // packed: octave / osc 1>2 sync
+        case 72: return "O1lvl";
+        case 73: return "O2lvl";
+        case 74: return "O3lvl";
+        case 75: return "NOlvl";
+        case 76: return "RGlvl";
+        case 77: return "EXin";
+        case 78: return "LFwav";   // packed: lfo waveform / delay multi
+        case 79: return "LFkey";   // packed: keysync / lock / phase
+        case 80: return "L1spd";
+        case 81: return "L1syn";
+        case 82: return "L1dly";
+        case 83: return "L2spd";
+        case 84: return "L2syn";
+        case 85: return "L2dly";
+        case 87: return "ARsyn";
+        case 88: return "ARgat";
+        case 89: return "ARctl";   // packed arp control
+        case 91: return "RVlvl";
+        case 92: return "DLlvl";
+        case 93: return "CHlvl";
+        case 94: return "PNdep";
+        case 95: return "VObal";
+        case 98: return "NRnum";
+        case 102: return "FLlfo";
+        case 103: return "FLqnm";
+        case 104: return "FLod";
+        case 105: return "FLfrq";
+        case 106: return "FLres";
+        case 107: return "FLmen";
+        case 108: return "AMatk";
+        case 109: return "AMdcy";
+        case 110: return "AMsus";
+        case 111: return "AMrel";
+        case 112: return "AMvel";
+        case 114: return "MEatk";
+        case 115: return "MEdcy";
+        case 116: return "MEsus";
+        case 117: return "MErel";
+        case 118: return "MEvel";
+        case 119: return "OUtlv";  // voice level to output
+        case 120: return "ANoff";
+        case 121: return "RSt";
+        case 122: return "LOcl";
+        case 123: case 124: case 125: case 126: case 127: return "Noff";
+        default: return nullptr;
+    }
+}
+
+void writeRole(int v, const char* role, char* out, int cap) {
+    if (role) std::snprintf(out, size_t(cap), "%d %s", v, role);
+    else std::snprintf(out, size_t(cap), "%d", v);
+}
+
 // spec 19 (table 0xa6750) / spec 05 appendix C §7: CC A..F value list,
 // 131 entries, no "off" entry. 0..127 = CC number, with a short role name for the standard
 // controllers; 128..130 = Program Change, Channel / Poly Aftertouch.
-void ccValueName(int value, char* out, int cap) {
+void ccValueName(int value, char* out, int cap, CcLegend legend) {
     if (cap <= 0) return;
     const int v = value < 0 ? 0 : (value > 130 ? 130 : value);
     if (v == 128) { std::snprintf(out, size_t(cap), "Prg Chg"); return; }
     if (v == 129) { std::snprintf(out, size_t(cap), "Chan AT"); return; }
     if (v == 130) { std::snprintf(out, size_t(cap), "Poly AT"); return; }
-    // spec 19 §3: the 38 role suffixes (other numbers are bare).
+    if (legend == CcLegend::kTetra) { writeRole(v, tetraRole(v), out, cap); return; }
+    if (legend == CcLegend::kAStation) { writeRole(v, aStationRole(v), out, cap); return; }
+    if (v >= 20 && v <= 119) {
+        std::snprintf(out, size_t(cap), "%d %s", v, kDrumCc[v - 20]);
+        return;
+    }
+    // General MIDI roles the DrumStation does not use (spec 19 §3).
     const char* role = nullptr;
     switch (v) {
         case 0: role = "Bank"; break;
@@ -236,30 +440,6 @@ void ccValueName(int value, char* out, int cap) {
         case 8: role = "Balnc"; break;
         case 10: role = "Pan"; break;
         case 11: role = "Exp"; break;
-        case 32: role = "Bank"; break;
-        case 33: role = "Modw"; break;
-        case 34: role = "Brth"; break;
-        case 36: role = "Foot"; break;
-        case 37: role = "Glid"; break;
-        case 38: role = "Data"; break;
-        case 39: role = "ChVo"; break;
-        case 40: role = "Blnc"; break;
-        case 42: role = "Pan"; break;
-        case 43: role = "Exp"; break;
-        case 64: role = "Sust"; break;
-        case 65: role = "Port"; break;
-        case 66: role = "Sste"; break;
-        case 67: role = "SftP"; break;
-        case 68: role = "Lgto"; break;
-        case 69: role = "Hld2"; break;
-        case 84: role = "Porta"; break;
-        case 88: role = "HDVel"; break;
-        case 96: role = "Dat+"; break;
-        case 97: role = "Dat-"; break;
-        case 98: role = "NRPNL"; break;
-        case 99: role = "NRPNM"; break;
-        case 100: role = "RPNL"; break;
-        case 101: role = "RPNM"; break;
         case 120: role = "SOff"; break;
         case 121: role = "Rst"; break;
         case 122: role = "Locl"; break;

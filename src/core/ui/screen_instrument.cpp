@@ -96,8 +96,17 @@ void listColumn(Gfx& g, const Theme& th, int col, int span, const char* const* i
 
 // MIDI instrument CC A-F: 131-item lists of CC names (spec 19 §4, manual
 // p.256-261; MANUAL_AUDIT_2026-10-23 #6).
-void ccItem(void*, int i, char* out, int cap) { midicc::ccValueName(i, out, cap); }
-void ccListColumn(Gfx& g, const Theme& th, int col, int sel) {
+void ccItem(void* ctx, int i, char* out, int cap) {
+    const auto legend = ctx ? *static_cast<const midicc::CcLegend*>(ctx) : midicc::CcLegend::kDrum;
+    midicc::ccValueName(i, out, cap, legend);
+}
+// A..R DrumStation, S..V A-Station, W..Z Tetra.
+midicc::CcLegend ccLegend(int slot) {
+    if (slot >= 22) return midicc::CcLegend::kTetra;
+    if (slot >= 18) return midicc::CcLegend::kAStation;
+    return midicc::CcLegend::kDrum;
+}
+void ccListColumn(Gfx& g, const Theme& th, int col, int sel, midicc::CcLegend legend) {
     // Eight lists share one frame. The per-column bottom fade is a gradient
     // (24 display-list words each) and eight of them do not fit, so the
     // column fill has no fade.
@@ -110,9 +119,13 @@ void ccListColumn(Gfx& g, const Theme& th, int col, int sel) {
     v.background = false;
     v.count = midicc::kCcValueCount;
     v.sel = sel;
-    v.top = wg::listFollow(sel, v.count, wg::listVisibleRows(v.h), 0);
+    // Taller rows: eight columns of "108 SDdcy" at the normal 14-row pitch
+    // overflow the display list (the screen looks frozen). Eight rows fit.
+    v.rowH = 48;
+    v.top = wg::listFollow(sel, v.count, wg::listVisibleRows(v.h, v.rowH), 0);
     v.selStyle = wg::ListSel::kWhite;
     v.item = ccItem;
+    v.ctx = &legend;
     wg::list(g, th, v);
 }
 
@@ -176,7 +189,7 @@ int midiPageColumns(int page) {
 const char* midiColumnName(int page, int c) {
     static const char* kPage0[8] = {"Velocity", "Offset", "CC A", "CC B", "CC C", "CC D", "CC E", "CC F"};
     static const char* kExt[20] = {"CC G", "CC H", "CC I", "CC J", "CC K", "CC L", "CC M", "CC N", "CC O", "CC P",
-                                   "CC Q", "CC R", "CC S", "CC T", "CC U", "CC V", "CC W", "CC X", "CC Y", "CC Z"};
+                                   "CC Q", "CC R", "AS S", "AS T", "AS U", "AS V", "TE W", "TE X", "TE Y", "TE Z"};
     if (page <= 0) return c >= 0 && c < 8 ? kPage0[c] : "";
     const int ext = midiCcSlot(page, c) - 6;
     return ext >= 0 && ext < 20 ? kExt[ext] : "";
@@ -210,7 +223,7 @@ void InstrumentScreen::valueText(int c, char* out, int cap, float* frac, bool* b
             const int raw = slot >= 0 && slot < MidiInstrument::kCcCount ? m.cc[slot] : 0;
             const int v = raw > 130 ? 130 : raw;
             // Appendix C §7 list 0xa6750: CC number + role name, PC, AT.
-            midicc::ccValueName(uint8_t(raw), out, cap);
+            midicc::ccValueName(uint8_t(raw), out, cap, ccLegend(slot));
             *frac = float(v) / 130.0f;
         }
         return;
@@ -794,7 +807,7 @@ void InstrumentScreen::draw(Gfx& g) {
                 const MidiInstrument m = a.project.midiInstrument(ci - kFirstMidiInstrument);
                 const int slot = midiCcSlot(midiPage, c);
                 const int raw = slot >= 0 && slot < MidiInstrument::kCcCount ? m.cc[slot] : 0;
-                ccListColumn(g, th, c, clampi(raw, 0, midicc::kCcValueCount - 1));
+                ccListColumn(g, th, c, clampi(raw, 0, midicc::kCcValueCount - 1), ccLegend(slot));
                 continue;
             }
             valueText(c, v, sizeof(v), &fr, &bi);

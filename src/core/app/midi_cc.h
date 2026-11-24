@@ -80,9 +80,13 @@ int ccTimePosition(uint8_t value);
 // the sample length in frames. Returns true when a parameter changed.
 inline bool isPlaybackCc(uint8_t cc) { return cc >= 16 && cc <= 19; }
 bool applyPlaybackCc(Instrument& in, uint32_t len, uint8_t cc, uint8_t value);
-// CC A..F value label (spec 05 appendix C §7, 131 entries 0..130).
+// CC A..Z value label (spec 05 appendix C §7, 131 entries 0..130).
+// Which machine the column is aimed at. A..R are the DrumStation, S..V the
+// A-Station, W..Z the Tetra. The section is capitals and the function is
+// small letters, five characters at most ("105 FLfrq").
+enum class CcLegend : uint8_t { kDrum, kAStation, kTetra };
 constexpr int kCcValueCount = 131;
-void ccValueName(int value, char* out, int cap);
+void ccValueName(int value, char* out, int cap, CcLegend legend = CcLegend::kDrum);
 
 // ---- master levels (spec 12 §B.4) -------------------------------------------
 // Project values offset written by CC 71..82, or 0 when `cc` is not a
