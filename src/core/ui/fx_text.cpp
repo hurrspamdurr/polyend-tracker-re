@@ -93,6 +93,13 @@ const char* const kDescription[kFxCount] = {
     "Sends the MIDI instrument's CC Q with this value.",   // 53
     "Sends the MIDI instrument's CC R with this value.",   // 54
     "Sends the MIDI instrument's CC S with this value.",   // 55
+    "Sends the MIDI instrument's CC T with this value.",   // 56
+    "Sends the MIDI instrument's CC U with this value.",   // 57
+    "Sends the MIDI instrument's CC V with this value.",   // 58
+    "Sends the MIDI instrument's CC W with this value.",   // 59
+    "Sends the MIDI instrument's CC X with this value.",   // 60
+    "Sends the MIDI instrument's CC Y with this value.",   // 61
+    "Sends the MIDI instrument's CC Z with this value.",   // 62
 };
 }  // namespace
 

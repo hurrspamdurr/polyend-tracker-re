@@ -98,9 +98,16 @@ void listColumn(Gfx& g, const Theme& th, int col, int span, const char* const* i
 // p.256-261; MANUAL_AUDIT_2026-10-23 #6).
 void ccItem(void*, int i, char* out, int cap) { midicc::ccValueName(i, out, cap); }
 void ccListColumn(Gfx& g, const Theme& th, int col, int sel) {
+    // Eight lists share one frame. The per-column bottom fade is a gradient
+    // (24 display-list words each) and eight of them do not fit, so the
+    // column fill has no fade.
+    const int x = wg::columnX(col);
+    const int w = wg::columnW(1);
+    wg::panel(g, th, x, wg::kPanelY, w, wg::kPanelH, th.slot(slot::kList + 3), false);
     wg::ListView v;
-    v.x = wg::columnX(col);
-    v.w = wg::columnW(1);
+    v.x = x;
+    v.w = w;
+    v.background = false;
     v.count = midicc::kCcValueCount;
     v.sel = sel;
     v.top = wg::listFollow(sel, v.count, wg::listVisibleRows(v.h), 0);
@@ -149,17 +156,35 @@ bool InstrumentScreen::selectable(int c) const {
 }
 
 namespace {
-// [I] CC slot for a column on the MIDI instrument pages. Page 0 is the stock
-// row (columns 2..7 = A..F). Page 1 is G..L, page 2 is M..S.
+// [I] MIDI CC pages. Page 0 is the stock row (columns 2..7 = A..F). Later
+// pages use all eight bottom buttons. Left and Right move between pages.
+constexpr int kMidiCcPageCount = 4;
+constexpr int kMidiExtPerPage = 8;
+
 int midiCcSlot(int page, int c) {
     if (page <= 0) return c - 2;
-    if (page == 1) return 6 + c;
-    return 12 + c;
+    return 6 + (page - 1) * kMidiExtPerPage + c;
+}
+
+int midiPageColumns(int page) {
+    if (page <= 0) return 8;
+    const int start = 6 + (page - 1) * kMidiExtPerPage;
+    const int left = MidiInstrument::kCcCount - start;
+    return left >= kMidiExtPerPage ? kMidiExtPerPage : (left > 0 ? left : 0);
+}
+
+const char* midiColumnName(int page, int c) {
+    static const char* kPage0[8] = {"Velocity", "Offset", "CC A", "CC B", "CC C", "CC D", "CC E", "CC F"};
+    static const char* kExt[20] = {"CC G", "CC H", "CC I", "CC J", "CC K", "CC L", "CC M", "CC N", "CC O", "CC P",
+                                   "CC Q", "CC R", "CC S", "CC T", "CC U", "CC V", "CC W", "CC X", "CC Y", "CC Z"};
+    if (page <= 0) return c >= 0 && c < 8 ? kPage0[c] : "";
+    const int ext = midiCcSlot(page, c) - 6;
+    return ext >= 0 && ext < 20 ? kExt[ext] : "";
 }
 }  // namespace
 
 int InstrumentScreen::columns() const {
-    if (mode == 3) return midiPage == 0 ? 8 : (midiPage == 1 ? 6 : 7);
+    if (mode == 3) return midiPageColumns(midiPage);
     if (mode == 2) return 2;
     if (mode == 1) return 7;
     return effects ? 4 : 7;
@@ -375,9 +400,6 @@ void InstrumentScreen::refreshBar() {
     static const char* kE[4] = {"Overdrive", "Bit depth", "Reverb", "Delay"};
     static const char* kEnv[7] = {"Destination", "Type", "Attack", "Decay", "Sustain", "Release", "Amount"};
     static const char* kLfo[7] = {"Destination", "Type", "Shape", "Speed", "Amount", "", ""};
-    static const char* kMidi[8] = {"Velocity", "Offset", "CC A", "CC B", "CC C", "CC D", "CC E", "CC F"};
-    static const char* kMidiG[6] = {"CC G", "CC H", "CC I", "CC J", "CC K", "CC L"};
-    static const char* kMidiM[7] = {"CC M", "CC N", "CC O", "CC P", "CC Q", "CC R", "CC S"};
     if (mode == 2) {
         // Appendix C §8 bottom labels.
         b.set(1, "CC List");
@@ -391,10 +413,9 @@ void InstrumentScreen::refreshBar() {
     // 050505 strip [S snap 011, Part 2 C5].
     b.stripBg = wg::mix(0x000000, ui_.th().slot(slot::kStrip + 1), 128);
     if (mode == 3) {
-        const char* const* names = midiPage == 0 ? kMidi : (midiPage == 1 ? kMidiG : kMidiM);
         for (int i = 0; i < columns(); ++i) {
             valueText(i, v, sizeof(v), &fr, &bi);
-            b.set(i, names[i], v);
+            b.set(i, midiColumnName(midiPage, i), v);
         }
         return;
     }
@@ -520,7 +541,7 @@ void InstrumentScreen::onButton(uint8_t id, uint8_t state) {
             } else if (selectable(column - 1)) --column;
             break;
         case btn::Right:
-            if (mode == 3 && column + 1 >= columns() && midiPage < 2) {
+            if (mode == 3 && column + 1 >= columns() && midiPage < kMidiCcPageCount - 1) {
                 ++midiPage;
                 column = 0;
             } else if (selectable(column + 1)) ++column;
@@ -717,7 +738,7 @@ void InstrumentScreen::draw(Gfx& g) {
     const Theme& th = ui_.th();
     const uint8_t ci = a.currentInstrument();
     char title[48], sub[48];
-    if (mode == 3) std::snprintf(title, sizeof(title), "MIDI Instrument Parameters %d/3", midiPage + 1);
+    if (mode == 3) std::snprintf(title, sizeof(title), "MIDI Instrument Parameters %d/%d", midiPage + 1, kMidiCcPageCount);
     else if (mode == 1) std::snprintf(title, sizeof(title), "Instrument Automation 2/2");
     else if (effects) std::snprintf(title, sizeof(title), "Instrument Effects");
     else std::snprintf(title, sizeof(title), "Instrument Parameters 1/2");

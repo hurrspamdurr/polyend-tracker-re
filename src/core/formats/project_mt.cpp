@@ -175,7 +175,7 @@ void encodeMidiCcSide(const Project& p, uint8_t out[kMidiCcSideSize]) {
     out[1] = 'T';
     out[2] = 'C';
     out[3] = 'C';
-    out[4] = 1;
+    out[4] = 2;
     std::memcpy(out + 5, p.midiCcExt, sizeof(p.midiCcExt));
     uint8_t sum = 0;
     for (uint32_t i = 0; i < sizeof(p.midiCcExt); ++i) sum = uint8_t(sum + out[5 + i]);
@@ -183,15 +183,22 @@ void encodeMidiCcSide(const Project& p, uint8_t out[kMidiCcSideSize]) {
 }
 
 bool decodeMidiCcSide(const uint8_t* in, uint32_t len, Project& p) {
-    if (!in || len < kMidiCcSideSize) return false;
-    if (in[0] != 'O' || in[1] != 'T' || in[2] != 'C' || in[3] != 'C' || in[4] != 1) return false;
+    if (!in || len < 6) return false;
+    if (in[0] != 'O' || in[1] != 'T' || in[2] != 'C' || in[3] != 'C') return false;
+    int cols = 0;
+    if (in[4] == 1) cols = kMidiCcExtV1;
+    else if (in[4] == 2) cols = Project::kMidiCcExt;
+    else return false;
+    const uint32_t payload = uint32_t(kMidiInstrumentCount) * uint32_t(cols);
+    if (len < 5 + payload + 1) return false;
     uint8_t sum = 0;
-    for (uint32_t i = 0; i < sizeof(p.midiCcExt); ++i) sum = uint8_t(sum + in[5 + i]);
-    if (sum != in[5 + sizeof(p.midiCcExt)]) return false;
+    for (uint32_t i = 0; i < payload; ++i) sum = uint8_t(sum + in[5 + i]);
+    if (sum != in[5 + payload]) return false;
     const MidiInstrument def;
+    const int keep = cols < Project::kMidiCcExt ? cols : Project::kMidiCcExt;
     for (int i = 0; i < kMidiInstrumentCount; ++i) {
-        for (int c = 0; c < Project::kMidiCcExt; ++c) {
-            const uint8_t v = in[5 + i * Project::kMidiCcExt + c];
+        for (int c = 0; c < keep; ++c) {
+            const uint8_t v = in[5 + i * cols + c];
             p.midiCcExt[i][c] = v > 130 ? def.cc[6 + c] : v;
         }
     }

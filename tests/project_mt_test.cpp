@@ -162,7 +162,7 @@ TEST(sanitiser) {
     encodeProject(p, g_buf);
     g_buf[0x110] = 0xF0;        // <0 -> 48
     g_buf[0x111] = 64;          // >63 -> 0
-    g_buf[0x113] = 60;          // above the FX menu (0..55) -> 0
+    g_buf[0x113] = 70;          // above the FX menu (0..62) -> 0
     g_buf[0x12C + 3] = 2;       // >1 -> 0
     g_buf[0x134] = 4;           // >3 -> 0 (1.9.2 rule; recorder source 0..3)
     wrU16(g_buf + 0x142, 0);    // not 1..255 -> 1
@@ -501,6 +501,7 @@ TEST(midi_cc_gs_stay_out_of_the_stock_record) {
     m.cc[6] = 80;
     m.cc[16] = 99;
     m.cc[18] = 21;
+    m.cc[25] = 40;
     p.setMidiInstrument(3, m);
     encodeProject(p, g_buf);
     CHECK_BYTES(g_buf + 0x4FD + 3 * 16, 3, 127, 1, 5, 7, 11, 64, 128, 12, 0, 0, 0, 0, 0, 0, 0);
@@ -512,11 +513,14 @@ TEST(midi_cc_gs_stay_out_of_the_stock_record) {
     CHECK_EQ(q.midiInstrument(3).extra[0], 12);
     CHECK_EQ(q.midiInstrument(3).cc[6], 74);
     CHECK_EQ(q.midiInstrument(3).cc[16], 18);
+    CHECK_EQ(q.midiInstrument(3).cc[25], 27);
     CHECK(decodeMidiCcSide(side, sizeof(side), q));
     CHECK_EQ(q.midiInstrument(3).cc[6], 80);
     CHECK_EQ(q.midiInstrument(3).cc[16], 99);
     CHECK_EQ(q.midiInstrument(3).cc[18], 21);
+    CHECK_EQ(q.midiInstrument(3).cc[25], 40);
     CHECK_EQ(q.midiInstrument(3).extra[0], 12);
+    CHECK_EQ(side[4], 2);
     side[5] ^= 0xFF;
     CHECK(!decodeMidiCcSide(side, sizeof(side), q));
 }

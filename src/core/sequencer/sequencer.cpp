@@ -26,25 +26,23 @@ inline uint8_t slotOfColumn(int c) { return c == 0 ? 1 : 0; }
 
 // FX that the sequencer consumes at step start; on an empty step everything
 // else is forwarded to the sounding voice with applyFx (spec 03 §3.3 step 9).
+int ccLetter(uint8_t type) {
+    if (type >= 8 && type <= 12) return type - 8;
+    if (type == 37) return 5;
+    if (type >= 43 && type <= 62) return 6 + (type - 43);   // G..Z -> 6..25
+    return -1;
+}
+
 bool consumedBySequencer(uint8_t type) {
+    if (ccLetter(type) >= 0) return true;
     switch (type) {
         case 0: case 1: case 2: case 3: case 4: case 5: case 6:
-        case 8: case 9: case 10: case 11: case 12: case 13: case 14: case 15: case 16: case 17:
-        case 20: case 21: case 37:
-        case 43: case 44: case 45: case 46: case 47:
-        case 48: case 49: case 50: case 51: case 52:
-        case 53: case 54: case 55:
+        case 13: case 14: case 15: case 16: case 17:
+        case 20: case 21:
             return true;
         default:
             return false;
     }
-}
-
-int ccLetter(uint8_t type) {
-    if (type >= 8 && type <= 12) return type - 8;
-    if (type == 37) return 5;
-    if (type >= 43 && type <= 55) return 6 + (type - 43);   // G..S -> 6..18
-    return -1;
 }
 
 }  // namespace
@@ -584,22 +582,6 @@ void Sequencer::stepStart(int t) {
             case 7:  // Random volume: rand 0..v (with a note)
                 if (p.rec.note >= 0) p.rec.volume = int8_t(rng_.rangeIncl(0, v > 100 ? 100 : v));
                 break;
-            case 8: case 9: case 10: case 11: case 12: case 37:
-            case 43: case 44: case 45: case 46: case 47:
-            case 48: case 49: case 50: case 51: case 52:
-            case 53: case 54: case 55: {
-                const int letter = ccLetter(type);
-                if (isMidiInstr(p.rec.instr)) {
-                    sendCcFx(t, uint8_t(letter), v, p.rec);
-                } else if (sink_ && letter >= 0 && letter < 6) {
-                    // Synth step: macro 1..6 of the slot (Mini manual 7.38). An
-                    // FX-only step uses the synth the track plays.
-                    uint8_t in = p.rec.instr;
-                    if (!isSynth(in) && p.rec.note < 0 && isSynth(tr.last.instr)) in = tr.last.instr;
-                    if (isSynth(in)) sink_->synthMacroFx(uint8_t(synthSlotOf(in)), uint8_t(letter), v > 127 ? 127 : v);
-                }
-                break;
-            }
             case 13:  // Break
                 breakPending_ = true;
                 break;
@@ -642,6 +624,18 @@ void Sequencer::stepStart(int t) {
                 if (isMidiLike(p.rec.instr)) sendPitchBendFx(p.rec.instr, v);
                 break;
             default:
+                if (ccLetter(type) >= 0) {
+                    const int letter = ccLetter(type);
+                    if (isMidiInstr(p.rec.instr)) {
+                        sendCcFx(t, uint8_t(letter), v, p.rec);
+                    } else if (sink_ && letter >= 0 && letter < 6) {
+                        // Synth step: macro 1..6 of the slot (Mini manual 7.38). An
+                        // FX-only step uses the synth the track plays.
+                        uint8_t in = p.rec.instr;
+                        if (!isSynth(in) && p.rec.note < 0 && isSynth(tr.last.instr)) in = tr.last.instr;
+                        if (isSynth(in)) sink_->synthMacroFx(uint8_t(synthSlotOf(in)), uint8_t(letter), v > 127 ? 127 : v);
+                    }
+                }
                 break;
         }
     }

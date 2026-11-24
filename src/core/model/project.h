@@ -131,7 +131,7 @@ struct Project {
     char name[mt::kNameMax + 1] = {};
     char folder[mt::kFolderMax + 1] = {};
 
-    // [I] MIDI CC G..S for the 16 MIDI instruments. Not in the values image:
+    // [I] MIDI CC G..Z for the 16 MIDI instruments. Not in the values image:
     // the 16-byte record stays channel, velocity, CC A..F, delay in byte 8.
     static constexpr int kMidiCcExt = MidiInstrument::kCcCount - 6;
     uint8_t midiCcExt[kMidiInstrumentCount][kMidiCcExt] = {};

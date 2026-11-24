@@ -227,7 +227,7 @@ MidiInstrument Project::midiInstrument(int idx) const {
     m.velocity = p[1];
     std::memcpy(m.cc, p + 2, 6);
     std::memcpy(m.extra, p + 8, 8);
-    std::memcpy(m.cc + 6, midiCcExt[idx], kMidiCcExt);   // [I] CC G..S
+    std::memcpy(m.cc + 6, midiCcExt[idx], kMidiCcExt);   // [I] CC G..Z
     return m;
 }
 
@@ -238,7 +238,7 @@ void Project::setMidiInstrument(int idx, const MidiInstrument& m) {
     p[1] = m.velocity;
     std::memcpy(p + 2, m.cc, 6);
     std::memcpy(p + 8, m.extra, 8);
-    std::memcpy(midiCcExt[idx], m.cc + 6, kMidiCcExt);   // [I] CC G..S
+    std::memcpy(midiCcExt[idx], m.cc + 6, kMidiCcExt);   // [I] CC G..Z
 }
 
 void Project::setName(const char* s) { copyStr(name, sizeof(name), s); }

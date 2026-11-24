@@ -62,13 +62,21 @@ const FxInfo kFxTable[kFxCount] = {
     {'Y', "MIDI CC Q", 0, 127, 0},
     {'Z', "MIDI CC R", 0, 127, 0},
     {'o', "MIDI CC S", 0, 127, 0},
+    // A..Z letters are already stock symbols or G..S. The menu name is the letter.
+    {'#', "MIDI CC T", 0, 127, 0},
+    {'$', "MIDI CC U", 0, 127, 0},
+    {'%', "MIDI CC V", 0, 127, 0},
+    {'&', "MIDI CC W", 0, 127, 0},
+    {'*', "MIDI CC X", 0, 127, 0},
+    {'+', "MIDI CC Y", 0, 127, 0},
+    {'=', "MIDI CC Z", 0, 127, 0},
 };
 }  // namespace
 
 const uint8_t kFxMenuOrder[kFxCount] = {
     0, 1, 18, 31, 34, 19, 15, 17, 2, 20, 4, 3, 21, 5, 6, 16, 7, 26, 22, 25, 23, 24,
     35, 36, 33, 38, 27, 29, 28, 30, 32, 39, 40, 41, 42, 8, 9, 10, 11, 12, 37,
-    43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 14, 13,
+    43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 14, 13,
 };
 
 const FxInfo& fxInfo(uint8_t id) { return kFxTable[id < kFxCount ? id : 0]; }

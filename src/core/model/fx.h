@@ -65,9 +65,16 @@ enum class FxId : uint8_t {
     MidiCcQ = 53,
     MidiCcR = 54,
     MidiCcS = 55,
+    MidiCcT = 56,
+    MidiCcU = 57,
+    MidiCcV = 58,
+    MidiCcW = 59,
+    MidiCcX = 60,
+    MidiCcY = 61,
+    MidiCcZ = 62,
 };
 
-constexpr int kFxCount = 56;
+constexpr int kFxCount = 63;
 
 struct FxInfo {
     char symbol;          // single-character column symbol
