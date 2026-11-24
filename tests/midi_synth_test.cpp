@@ -344,6 +344,18 @@ TEST(cc_value_names) {
     CHECK(std::strcmp(b, "Prg Chg") == 0);
     midicc::ccValueName(129, b, sizeof(b));
     CHECK(std::strcmp(b, "Chan AT") == 0);
+    midicc::ccValueName(20, b, sizeof(b), midicc::CcLegend::kTetra);
+    CHECK(std::strcmp(b, "20 O1frq") == 0);
+    midicc::ccValueName(105, b, sizeof(b), midicc::CcLegend::kTetra);
+    CHECK(std::strcmp(b, "105 FLaud") == 0);
+    midicc::ccValueName(64, b, sizeof(b), midicc::CcLegend::kTetra);
+    CHECK(std::strcmp(b, "64") == 0);
+    midicc::ccValueName(20, b, sizeof(b), midicc::CcLegend::kAStation);
+    CHECK(std::strcmp(b, "20 DLsyn") == 0);
+    midicc::ccValueName(105, b, sizeof(b), midicc::CcLegend::kAStation);
+    CHECK(std::strcmp(b, "105 FLfrq") == 0);
+    midicc::ccValueName(70, b, sizeof(b), midicc::CcLegend::kAStation);
+    CHECK(std::strcmp(b, "70 OSwav") == 0);
     midicc::ccValueName(130, b, sizeof(b));
     CHECK(std::strcmp(b, "Poly AT") == 0);
     midicc::ccValueName(200, b, sizeof(b));

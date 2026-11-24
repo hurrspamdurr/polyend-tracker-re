@@ -488,11 +488,15 @@ TEST(midi_cc_gs_pages_keep_the_display_list) {
     for (int i = 0; i < 8; ++i) h.tap(btn::Right);
     CHECK_EQ(s.midiPage, 2);
     CHECK(std::strcmp(a.ui.bar.label[0].top, "CC O") == 0);
-    CHECK(std::strcmp(a.ui.bar.label[7].top, "CC V") == 0);
+    CHECK(std::strcmp(a.ui.bar.label[7].top, "AS V") == 0);
+    a.ui.dirty();
+    h.run(40);
+    CHECK(h.disp.lastHasText("20 DLsyn"));
+    CHECK(a.ui.lastDlWords() < Ui::kDlTargetWords);
     for (int i = 0; i < 8; ++i) h.tap(btn::Right);
     CHECK_EQ(s.midiPage, 3);
-    CHECK(std::strcmp(a.ui.bar.label[0].top, "CC W") == 0);
-    CHECK(std::strcmp(a.ui.bar.label[3].top, "CC Z") == 0);
+    CHECK(std::strcmp(a.ui.bar.label[0].top, "TE W") == 0);
+    CHECK(std::strcmp(a.ui.bar.label[3].top, "TE Z") == 0);
     h.tap(btn::F4);
     h.enc(1);
     CHECK_EQ(a.project.midiInstrument(0).cc[25], 28);
